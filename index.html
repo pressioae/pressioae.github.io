@@ -29,33 +29,33 @@
   --ok:#5E7355;
   --off:#A25B4A;
   --logo-w:min(268px,56vw);
-  --logo-src:url(images/site-mask700.png);
+  --logo-src:url(images/brand/logo.png);
   --topnav-h:56px;
   --catnav-h:45px;
-  --hero-src:url(images/site-hero.jpg);
-  --ph-cup:url(images/site-ph_cup.jpg);
-  --ph-latte:url(images/site-ph_latte.jpg);
-  --ph-cookie:url(images/site-ph_cookie.jpg);
-  --ph-cake:url(images/site-ph_cake.jpg);
-  --ph-crois:url(images/site-ph_crois.jpg);
-  --ph-twist:url(images/site-ph_twist.jpg);
-  --ph-int1:url(images/site-ph_int1.jpg);
-  --ph-int2:url(images/site-ph_int2.jpg);
-  --ph-int3:url(images/site-ph_int3.jpg);
-  --ph-int4:url(images/site-ph_int4.jpg);
-  --ph-pistachio:url(images/site-ph_pistachio.jpg);
-  --ph-slice:url(images/site-ph_slice.jpg);
-  --ph-smatcha:url(images/site-ph_smatcha.jpg);
-  --ph-hotchoc:url(images/site-ph_hotchoc.jpg);
-  --ph-berryswirl:url(images/site-ph_berryswirl.jpg);
-  --ph-flatwhite:url(images/site-ph_flatwhite.jpg);
-  --ph-softberry:url(images/site-ph_softberry.jpg);
-  --ph-biscoff:url(images/site-ph_biscoff.jpg);
-  --ph-berrycup:url(images/site-ph_berrycup.jpg);
-  --ph-beans:url(images/site-ph_beans.jpg);
-  --ph-mango:url(images/site-ph_mango.jpg);
-  --ph-caramel:url(images/site-ph_caramel.jpg);
-  --ph-matchafrappe:url(images/site-ph_matchafrappe.jpg);
+  --hero-src:url(images/hero/hero.jpg);
+  --ph-cup:url(images/menu/cup.jpg);
+  --ph-latte:url(images/menu/latte.jpg);
+  --ph-cookie:url(images/menu/cookie.jpg);
+  --ph-cake:url(images/menu/cake.jpg);
+  --ph-crois:url(images/menu/crois.jpg);
+  --ph-twist:url(images/menu/twist.jpg);
+  --ph-int1:url(images/interior/int1.jpg);
+  --ph-int2:url(images/interior/int2.jpg);
+  --ph-int3:url(images/interior/int3.jpg);
+  --ph-int4:url(images/interior/int4.jpg);
+  --ph-pistachio:url(images/menu/pistachio.jpg);
+  --ph-slice:url(images/menu/slice.jpg);
+  --ph-smatcha:url(images/menu/smatcha.jpg);
+  --ph-hotchoc:url(images/menu/hotchoc.jpg);
+  --ph-berryswirl:url(images/menu/berryswirl.jpg);
+  --ph-flatwhite:url(images/menu/flatwhite.jpg);
+  --ph-softberry:url(images/menu/softberry.jpg);
+  --ph-biscoff:url(images/menu/biscoff.jpg);
+  --ph-berrycup:url(images/menu/berrycup.jpg);
+  --ph-beans:url(images/menu/beans.jpg);
+  --ph-mango:url(images/menu/mango.jpg);
+  --ph-caramel:url(images/menu/caramel.jpg);
+  --ph-matchafrappe:url(images/menu/matchafrappe.jpg);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -1359,8 +1359,8 @@ body.editing .qrpanel{display:flex;}
   // أي رابط ندخله في url(...) — نتأكد إنه data: أو blob: ونقتبسه
   function safeURL(u){
     u = String(u == null ? "" : u);
-    // ملف صورة جنب الصفحة — images/u_xxxx.jpg
-    if(/^images\/[A-Za-z0-9_][A-Za-z0-9_\-.]{0,80}\.(jpg|jpeg|png|webp|mp4)$/i.test(u)) return "'" + u + "'";
+    // ملف صورة جنب الصفحة — images/uploads/u_xxxx.jpg
+    if(/^images\/(?:[A-Za-z0-9_-]{1,32}\/)?[A-Za-z0-9_][A-Za-z0-9_\-.]{0,80}\.(jpg|jpeg|png|webp|mp4)$/i.test(u)) return "'" + u + "'";
     if(!/^(data:|blob:)/i.test(u)) return "";
     return "'" + u.replace(/['"\\()\s]/g, "") + "'";
   }
@@ -1461,8 +1461,8 @@ body.editing .qrpanel{display:flex;}
     return h;
   }
 
-  var STAMP_FULL = "images/site-stamp_full.png";
-  var STAMP_EMPTY = "images/site-stamp_empty.png";
+  var STAMP_FULL = "images/brand/stamp-full.png";
+  var STAMP_EMPTY = "images/brand/stamp-empty.png";
   function cupSVG(on){
     return '<img src="' + (on ? STAMP_FULL : STAMP_EMPTY) + '" alt="" aria-hidden="true">';
   }
