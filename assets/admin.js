@@ -44,6 +44,7 @@ const I = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v6H4V5h6"/>', dl: '<path d="M12 4v11m0 0-4-4m4 4 4-4M4 20h16"/>',
   upl: '<path d="M12 20V9m0 0-4 4m4-4 4 4M4 4h16"/>', eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  id: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.5 16.5a3.6 3.6 0 0 1 7 0M14 9.5h4M14 13h4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>', link: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>'
 };
@@ -164,11 +165,12 @@ const PERMS = [
   ["reports", "كل التقارير اليومية", "يشوف تقارير كل الفريق"],
   ["stock", "إخفاء صنف خلص", "يوقف صنف أو يخفيه لمدة ويرجع تلقائياً"],
   ["site", "تعديل المنيو والصور والمحتوى", "أسعار، أصناف، صور، نصوص الموقع، وضع الصيانة"],
-  ["backups", "النسخ الاحتياطية", "يحفظ نسخة، يسترجع، ويتراجع عن تعديل"]
+  ["backups", "النسخ الاحتياطية", "يحفظ نسخة، يسترجع، ويتراجع عن تعديل"],
+  ["hr", "الموظفين والرواتب", "ملفات الموظفين، إيصالات الرواتب، شهادات الراتب"]
 ];
 const PERM_AR = Object.fromEntries(PERMS.map(p => [p[0], p[1]]));
 const ROLE_PRESET = {
-  manager: ["view_all", "reports"],
+  manager: ["view_all", "reports", "hr"],
   accountant: ["inv_review", "reports", "inv_upload"],
   staff: ["inv_upload", "stock"],
   admin: []
@@ -336,6 +338,7 @@ const PAGES = [
   { id: "invoices", t: "الفواتير", i: "inv", ok: () => can("inv_upload") || can("inv_review") || can("view_all") },
   { id: "reports", t: "التقرير اليومي", i: "rep", ok: () => can("inv_upload") || can("reports") || can("view_all") },
   { id: "backups", t: "النسخ والسجل", i: "backup", ok: () => can("site") || can("backups") || can("view_all") },
+  { id: "hr", t: "الموظفين", i: "id", ok: () => can("hr") },
   { id: "team", t: "الفريق", i: "team", ok: () => isAdmin() }
 ];
 const allowed = () => PAGES.filter(p => p.ok());
@@ -1028,6 +1031,15 @@ VIEWS.reports = async el => {
       { submit: "", cancel: "إغلاق", extra: r.file_path ? `<button type="button" class="btn" id="rfile">الورقة المرفقة</button>` : "" });
     const rb = $("#rfile"); if (rb) rb.onclick = () => openDoc(r.file_path, rb);
   };
+  if (can("hr")) {
+    const from = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 5, 1)).toISOString().slice(0, 10);
+    const ps = await api.select("payslips", `select=month,total&status=eq.issued&month=gte.${from}`).catch(() => []);
+    const by = {}; ps.forEach(p => { const k = p.month.slice(0, 7); by[k] = (by[k] || 0) + Number(p.total); });
+    const card = document.createElement("div"); card.className = "card";
+    put(card, html`<div class="row between"><h2>الرواتب المصروفة — آخر ٦ شهور</h2><a class="btn sm" href="#/hr">${ico("id")} الموظفين والرواتب</a></div>
+      ${Object.keys(by).length ? html`<div class="tbl-wrap"><table><tbody>${Object.keys(by).sort().reverse().map(k => html`<tr><td>${monthLabel(k, "ar")}</td><td class="num">${fmtMoney(by[k])}</td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما انصرفت رواتب من النظام بعد</p>`}`);
+    el.appendChild(card);
+  }
 };
 function repCalc(r, fields) {
   const ex = r.extras || {};
@@ -1083,10 +1095,12 @@ VIEWS.backups = async el => {
   };
   const ex = $("#expall");
   if (ex) ex.onclick = () => busy(ex, async () => {
-    const [inv, rep, staff] = await Promise.all([api.select("invoices", "select=*&order=created_at"), api.select("reports", "select=*&order=report_date"), api.select("staff", "select=*")]);
+    const [inv, rep, staff, hr] = await Promise.all([api.select("invoices", "select=*&order=created_at"), api.select("reports", "select=*&order=report_date"), api.select("staff", "select=*"),
+      Promise.all(["employees", "payslips", "certificates", "doc_templates"].map(t => api.select(t, "select=*").catch(() => [])))]);
     await Promise.all([loadContent(), loadSettings()]);
     download(`pressio-full-export-${today()}.json`, { format: "pressio-backup", version: 2, taken_at: new Date().toISOString(), settings: S.settings,
-      categories: S.cats, items: S.items, media: S.media.filter(m => m.kind !== "docs"), documents: S.media.filter(m => m.kind === "docs"), invoices: inv, reports: rep, staff });
+      categories: S.cats, items: S.items, media: S.media.filter(m => m.kind !== "docs"), documents: S.media.filter(m => m.kind === "docs"), invoices: inv, reports: rep, staff,
+      employees: hr[0], payslips: hr[1], certificates: hr[2], doc_templates: hr[3] });
     toast("انحفظ الملف", "ok");
   });
   el.onclick = async e => {
@@ -1141,7 +1155,7 @@ VIEWS.team = async el => {
       <td><label class="switch"><input type="checkbox" data-a ${r.active ? "checked" : ""} ${me ? "disabled" : ""}></label></td>
       <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-save>حفظ</button>${me ? "" : html`<button class="btn icon" data-pw title="كلمة سر جديدة">${ico("key")}</button>`}</div></td></tr>`; })}</tbody></table></div>
     <div class="card" style="margin-top:16px"><h2>الأدوار الجاهزة</h2><ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">
-      <li><b>مدير المشروع:</b> يطّلع على كل شي (المنيو، الفواتير، التقارير، السجل) بدون تعديل.</li>
+      <li><b>مدير المشروع:</b> يطّلع على كل شي (المنيو، الفواتير، التقارير، السجل) بدون تعديل، ويدير ملفات الموظفين والرواتب والشهادات.</li>
       <li><b>المحاسب:</b> يشوف كل الفواتير ويعتمدها أو يرفضها، ويشوف التقارير اليومية.</li>
       <li><b>موظف:</b> يرفع الفواتير والتقرير اليومي، ويخفي الصنف اللي خلص لمدة ويرجع تلقائياً.</li>
       <li><b>المالك:</b> كل شي + إدارة الفريق.</li></ul>
@@ -1193,6 +1207,490 @@ function addUser(el) {
       VIEWS.team(el); return true; } });
   const f = $("form", d);
   f.role.onchange = () => { put($("#pmw", d), html`<span class="lbl">الصلاحيات</span>${f.role.value === "admin" ? html`<p class="hint">المالك يقدر يسوي كل شي.</p>` : permBoxes(ROLE_PRESET[f.role.value] || [])}`); };
+}
+
+/* ------------------------------------------------------------------
+   People & payroll: employee files, salary receipts, salary certificates
+------------------------------------------------------------------ */
+const HR = { emps: [], tpls: [], settings: {}, loaded: false };
+const EMP_FIELDS = ["full_name_ar", "full_name_en", "gender", "birth_date", "nationality_ar", "nationality_en", "passport_no", "passport_expiry", "id_no",
+  "job_title_ar", "job_title_en", "department", "join_date", "phone", "email", "basic_salary", "housing_allowance", "transport_allowance", "other_allowance",
+  "status", "leave_date", "notes", "user_id"];
+const SAL_PARTS = [["basic_salary", "الراتب الأساسي", "Basic salary"], ["housing_allowance", "بدل السكن", "Housing allowance"],
+  ["transport_allowance", "بدل المواصلات", "Transport allowance"], ["other_allowance", "بدلات أخرى", "Other allowance"]];
+const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const empName = (e, lang = "ar") => (lang === "en" ? (e.full_name_en || e.full_name_ar) : (e.full_name_ar || e.full_name_en)) || "—";
+const gross = e => SAL_PARTS.reduce((a, [k]) => a + Number(e[k] || 0), 0);
+const dmy = d => d ? String(d).slice(0, 10).split("-").reverse().join("/") : "";
+const monthKey = d => String(d || today()).slice(0, 7);
+const monthLabel = (ym, lang) => { const [y, m] = String(ym).slice(0, 7).split("-").map(Number); return (lang === "en" ? MONTHS_EN : MONTHS_AR)[m - 1] + " " + y; };
+const lastDay = ym => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+
+/* amounts in words (UAE dirhams) */
+function wordsEn(n) {
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const t = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const h = x => { let s = ""; if (x >= 100) { s += a[Math.floor(x / 100)] + " Hundred"; x %= 100; if (x) s += " "; }
+    if (x >= 20) { s += t[Math.floor(x / 10)]; if (x % 10) s += "-" + a[x % 10]; } else if (x) s += a[x]; return s; };
+  const int = x => { if (!x) return "Zero"; const parts = []; [[1e9, "Billion"], [1e6, "Million"], [1e3, "Thousand"], [1, ""]].forEach(([v, w]) => {
+      const q = Math.floor(x / v); if (q) { parts.push(h(q) + (w ? " " + w : "")); x -= q * v; } }); return parts.join(" "); };
+  n = Math.round(Number(n || 0) * 100) / 100;
+  const d = Math.floor(n), f = Math.round((n - d) * 100);
+  return int(d) + " UAE Dirhams" + (f ? " and " + int(f) + " Fils" : "") + " Only";
+}
+function wordsAr(n) {
+  const ones = ["", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة", "عشرة", "أحد عشر", "اثنا عشر", "ثلاثة عشر", "أربعة عشر", "خمسة عشر", "ستة عشر", "سبعة عشر", "ثمانية عشر", "تسعة عشر"];
+  const tens = ["", "", "عشرون", "ثلاثون", "أربعون", "خمسون", "ستون", "سبعون", "ثمانون", "تسعون"];
+  const hund = ["", "مائة", "مئتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"];
+  const h = x => { const p = []; if (x >= 100) { p.push(hund[Math.floor(x / 100)]); x %= 100; }
+    if (x >= 20) p.push(x % 10 ? ones[x % 10] + " و" + tens[Math.floor(x / 10)] : tens[Math.floor(x / 10)]); else if (x) p.push(ones[x]); return p.join(" و"); };
+  const scale = (q, one, two, few, many) => q === 1 ? one : q === 2 ? two : q <= 10 ? h(q) + " " + few : h(q) + " " + many;
+  const int = x => { if (!x) return "صفر"; const p = [];
+    const m = Math.floor(x / 1e6); if (m) { p.push(scale(m, "مليون", "مليونان", "ملايين", "مليون")); x %= 1e6; }
+    const k = Math.floor(x / 1e3); if (k) { p.push(scale(k, "ألف", "ألفان", "آلاف", "ألف")); x %= 1e3; }
+    if (x) p.push(h(x)); return p.join(" و"); };
+  n = Math.round(Number(n || 0) * 100) / 100;
+  const d = Math.floor(n), f = Math.round((n - d) * 100);
+  return "فقط " + int(d) + " درهم إماراتي" + (f ? " و" + int(f) + " فلس" : "") + " لا غير";
+}
+
+async function hrLoad(force = false) {
+  if (HR.loaded && !force) return;
+  const [emps, tpls, hs] = await Promise.all([
+    api.select("employees", "select=*&order=emp_no.asc"),
+    api.select("doc_templates", "select=*&order=kind.asc,lang.asc,created_at.asc"),
+    api.select("hr_settings", "select=data&id=eq.1")
+  ]);
+  HR.emps = emps; HR.tpls = tpls; HR.settings = (hs[0] && hs[0].data) || {}; HR.loaded = true;
+}
+const tplFor = (kind, lang) => HR.tpls.filter(t => t.kind === kind && t.active && (!lang || t.lang === lang)).sort((a, b) => (b.is_default - a.is_default))[0];
+
+/* ---------- document rendering (same code for screen, print and re-print) ---------- */
+function payslipValues(p) {
+  const e = p.emp || {}, adds = (p.lines || []).filter(l => l.type !== "deduct"), deds = (p.lines || []).filter(l => l.type === "deduct");
+  const part = l => `${l.label} ${fmtMoney(l.amount)}`;
+  return {
+    receipt_no: p.receipt_no || "—", receipt_date: dmy(p.receipt_date), employee_name: empName(e, "en") + (e.code ? `  (${e.code})` : ""),
+    salary_month: monthLabel(p.month, "en"), id_passport: e.passport_no || e.id_no || "", period_from: dmy(p.period_from), period_to: dmy(p.period_to),
+    job_title: e.job_title_en || e.job_title_ar || "", department: e.department || "", amount_aed: fmtMoney(p.total), amount_in_words: p.words_en || wordsEn(p.total),
+    being_for: p.being_for || ("Salary for " + monthLabel(p.month, "en") + ": " + adds.map(part).join(" + ") + (deds.length ? " − " + deds.map(part).join(" − ") : ""))
+  };
+}
+function certValues(e, lang, f) {
+  const en = lang === "en";
+  const total = gross(e);
+  return {
+    cert_no: (en ? "Ref: " : "رقم: ") + (f.cert_no || "—"), certificate_date: dmy(f.cert_date || today()),
+    recipient_name: f.recipient_name || "", recipient_entity: f.recipient_entity || "", employee_name: empName(e, lang),
+    nationality: en ? (e.nationality_en || e.nationality_ar) : (e.nationality_ar || e.nationality_en), passport_id: e.passport_no || e.id_no || "",
+    job_title: en ? (e.job_title_en || e.job_title_ar) : (e.job_title_ar || e.job_title_en), employment_start_date: dmy(e.join_date),
+    basic_salary: fmtMoney(e.basic_salary), housing_allowance: fmtMoney(e.housing_allowance), transport_allowance: fmtMoney(e.transport_allowance),
+    other_allowance: fmtMoney(e.other_allowance), total_salary: fmtMoney(total), salary_in_words: en ? wordsEn(total) : wordsAr(total),
+    certificate_purpose: f.purpose || ""
+  };
+}
+function docPage(tpl, vals) {
+  const pg = tpl.page || { w: 595.28, h: 841.89 };
+  const fill = s => String(s || "").replace(/\{\{(\w+)\}\}/g, (m, k) => esc(HR.settings[k] ?? ""));
+  const bg = tpl.bg_html ? fill(tpl.bg_html) : tpl.bg_url ? `<img class="bg" src="${esc(tpl.bg_url)}" alt="">` : "";
+  const fields = Object.entries(tpl.fields || {}).map(([k, f]) => {
+    const v = vals[k]; if (v == null || v === "") return "";
+    const st = `left:${f.x}pt;top:${f.y}pt;width:${f.w}pt;height:${f.h}pt;font-size:${f.size || 10}pt;` + (f.color ? `color:${f.color};` : "") + (f.bold ? "font-weight:600;" : "")
+      + `text-align:${f.align || (f.dir === "rtl" ? "right" : "left")};justify-content:${(f.align || (f.dir === "rtl" ? "right" : "left")) === "right" ? "flex-end" : (f.align === "center" ? "center" : "flex-start")}`;
+    return `<div class="df${f.multi ? " ml" : ""}" dir="${f.dir || "auto"}" style="${st}"><span>${esc(v)}</span></div>`;
+  }).join("");
+  return `<div class="docpage" style="width:${pg.w}pt;height:${pg.h}pt">${bg}${fields}</div>`;
+}
+const DOC_CSS = `.docpage{position:relative;overflow:hidden;background:#fff;color:#241814;font-family:'IBM Plex Sans Arabic','Jost',Helvetica,Arial,sans-serif}
+.docpage .bg{position:absolute;inset:0;width:100%;height:100%}
+.docpage .df{position:absolute;display:flex;align-items:center;white-space:nowrap;overflow:hidden;line-height:1.15;padding:0 3pt;box-sizing:border-box}
+.docpage .df.ml{white-space:normal;align-items:flex-start;line-height:1.3}
+.docpage .df span{unicode-bidi:plaintext}`;
+function fitFields(root) {
+  root.querySelectorAll(".df").forEach(el => {
+    let s = parseFloat(el.style.fontSize); const min = s * 0.55;
+    while (s > min && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) { s -= 0.25; el.style.fontSize = s + "pt"; }
+  });
+}
+function printDocs(pages, title) {
+  // print.html (same site) picks the documents up from this window, lays them out and opens the print dialog
+  window.__pressioPrint = { title, page: pages[0].tpl.page, css: DOC_CSS, html: pages.map(p => docPage(p.tpl, p.vals)).join("") };
+  const w = window.open("print.html?v=1", "_blank");
+  if (!w) toast("المتصفح منع النافذة — اسمح بالنوافذ المنبثقة لهذا الموقع", "bad");
+}
+
+/* ---------- the page ---------- */
+let hrTab = "emps", hrQ = "", hrMonth = monthKey();
+VIEWS.hr = async el => {
+  await hrLoad(true);
+  const tabs = [["emps", "الموظفين"], ["pay", "الرواتب"], ["certs", "الشهادات"], ["tpl", "القوالب والإعدادات"]];
+  put(el, html`${head("الموظفين والرواتب", "ملفات الموظفين، إيصالات الرواتب وشهادات الراتب — كل مستند ينحفظ ويقدر ينطبع مرة ثانية بنفس الشكل")}
+    <div class="chips" style="margin-bottom:14px">${tabs.map(([k, t]) => html`<button class="chip ${hrTab === k ? "on" : ""}" data-tab="${k}">${t}</button>`)}</div>
+    <div id="hrbody"><div class="empty">لحظة…</div></div>`);
+  $$("[data-tab]", el).forEach(b => b.onclick = () => { hrTab = b.dataset.tab; VIEWS.hr(el); });
+  const body = $("#hrbody", el);
+  if (hrTab === "emps") return hrEmployees(body, el);
+  if (hrTab === "pay") return hrPayroll(body, el);
+  if (hrTab === "certs") return hrCerts(body, el);
+  return hrTemplates(body, el);
+};
+
+function hrEmployees(body, el) {
+  const q = hrQ.trim().toLowerCase();
+  const list = HR.emps.filter(e => !q || [e.code, e.full_name_ar, e.full_name_en, e.passport_no, e.job_title_ar, e.job_title_en, e.department].join(" ").toLowerCase().includes(q));
+  const active = HR.emps.filter(e => e.status === "active");
+  put(body, html`<div class="card"><div class="row" style="margin-bottom:12px">
+      <input type="search" id="hq" value="${hrQ}" placeholder="بحث بالاسم أو الرقم أو الجواز…" style="max-width:280px">
+      <span class="sp"></span><span class="hint">${active.length} موظف فعّال · إجمالي الرواتب الشهرية <b class="num">${fmtMoney(active.reduce((a, e) => a + gross(e), 0))}</b></span>
+      <button class="btn primary" id="add-emp">${ico("plus")} موظف جديد</button></div>
+    ${list.length ? html`<div class="tbl-wrap"><table><thead><tr><th>الرقم</th><th>الاسم</th><th>المسمى</th><th>القسم</th><th>الالتحاق</th><th>الراتب الإجمالي</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${list.map(e => html`<tr data-e="${e.id}"><td class="num">${e.code}</td><td class="wrap"><b>${empName(e)}</b>${e.full_name_en && e.full_name_ar ? html`<br><span class="hint ltr">${e.full_name_en}</span>` : ""}</td>
+        <td>${e.job_title_ar || e.job_title_en || "—"}</td><td>${e.department || "—"}</td><td>${e.join_date ? fmtDay(e.join_date) : "—"}</td>
+        <td class="num">${fmtMoney(gross(e))}</td><td><span class="pill ${e.status === "active" ? "ok" : ""}">${e.status === "active" ? "على رأس العمل" : "غادر"}</span></td>
+        <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-ea="view">${ico("eye")} الملف</button><button class="btn sm" data-ea="slip">${ico("inv")} إيصال</button><button class="btn sm" data-ea="cert">${ico("content")} شهادة</button></div></td></tr>`)}</tbody></table></div>`
+      : html`<p class="empty">${HR.emps.length ? "ما فيه نتائج" : "أضف أول موظف"}</p>`}</div>`);
+  $("#hq", body).oninput = e => { hrQ = e.target.value; clearTimeout(hrEmployees.t); hrEmployees.t = setTimeout(() => { hrEmployees(body, el); const i = $("#hq", body); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); };
+  $("#add-emp", body).onclick = () => editEmployee(null, el);
+  body.onclick = e => {
+    const b = e.target.closest("[data-ea]"); if (!b) return;
+    const emp = HR.emps.find(x => x.id === b.closest("[data-e]").dataset.e);
+    if (b.dataset.ea === "view") return viewEmployee(emp, el);
+    if (b.dataset.ea === "slip") return newPayslip(emp, el);
+    if (b.dataset.ea === "cert") return newCertificate(emp, el);
+  };
+}
+
+async function editEmployee(emp, el) {
+  const e = emp ? clone(emp) : { gender: "male", status: "active", basic_salary: 0, housing_allowance: 0, transport_allowance: 0, other_allowance: 0, join_date: today() };
+  let accounts = []; try { accounts = await api.rpc("staff_accounts"); } catch (x) {}
+  const deps = HR.settings.departments || [];
+  const t = (k, label, type = "text", attrs = "") => html`<div class="f"><label>${label}</label><input type="${type}" name="${k}" value="${e[k] ?? ""}" ${raw(attrs)}></div>`;
+  modal(emp ? `ملف ${emp.code} — ${empName(emp)}` : "موظف جديد", html`
+    <h3 class="lbl">البيانات الشخصية</h3>
+    <div class="bi">${t("full_name_ar", "الاسم بالعربي *")}${t("full_name_en", "الاسم بالإنجليزي (كما في الجواز)", "text", 'dir="ltr"')}</div>
+    <div class="bi"><div class="f"><label>الجنس</label><select name="gender"><option value="male" ${e.gender === "male" ? "selected" : ""}>ذكر</option><option value="female" ${e.gender === "female" ? "selected" : ""}>أنثى</option></select></div>
+      ${t("birth_date", "تاريخ الميلاد", "date")}</div>
+    <div class="bi">${t("nationality_ar", "الجنسية بالعربي")}${t("nationality_en", "الجنسية بالإنجليزي", "text", 'dir="ltr"')}</div>
+    <div class="bi">${t("passport_no", "رقم الجواز", "text", 'dir="ltr"')}${t("passport_expiry", "انتهاء الجواز", "date")}</div>
+    <div class="bi">${t("id_no", "رقم الهوية (اختياري)", "text", 'dir="ltr"')}${t("phone", "الجوال", "tel", 'dir="ltr"')}</div>
+    <h3 class="lbl">العمل</h3>
+    <div class="bi">${t("job_title_ar", "المسمى الوظيفي بالعربي")}${t("job_title_en", "المسمى الوظيفي بالإنجليزي", "text", 'dir="ltr"')}</div>
+    <div class="bi"><div class="f"><label>القسم</label><input type="text" name="department" list="deps" value="${e.department || ""}"><datalist id="deps">${deps.map(d => html`<option value="${d}">`)}</datalist></div>
+      ${t("join_date", "تاريخ الالتحاق", "date")}</div>
+    <div class="bi"><div class="f"><label>الحالة</label><select name="status"><option value="active" ${e.status === "active" ? "selected" : ""}>على رأس العمل</option><option value="left" ${e.status === "left" ? "selected" : ""}>غادر</option></select></div>
+      ${t("leave_date", "تاريخ المغادرة (إذا غادر)", "date")}</div>
+    <h3 class="lbl">الراتب الشهري (درهم)</h3>
+    <div class="grid g4">${SAL_PARTS.map(([k, ar]) => html`<div class="f"><label>${ar}</label><input type="number" name="${k}" min="0" step="0.01" class="num" value="${e[k] ?? 0}"></div>`)}</div>
+    <p class="hint">الإجمالي: <b class="num" id="gtot">${fmtMoney(gross(e))}</b></p>
+    <h3 class="lbl">أخرى</h3>
+    <div class="bi">${t("email", "الإيميل", "email", 'dir="ltr"')}
+      <div class="f"><label>ربط بحساب دخول (عشان يشوف ملفه لاحقاً)</label><select name="user_id"><option value="">— بدون —</option>
+        ${accounts.map(a => html`<option value="${a.id}" ${e.user_id === a.id ? "selected" : ""}>${a.full_name} · ${a.email || ""}</option>`)}</select></div></div>
+    <div class="f"><label>ملاحظات</label><textarea name="notes">${e.notes || ""}</textarea></div>`,
+    { wide: true, onSubmit: async f => {
+      const row = {};
+      EMP_FIELDS.forEach(k => { if (!f[k]) return; let v = f[k].value; if (f[k].type === "number") v = Number(v || 0); else if (f[k].type === "date" || k === "user_id" || k === "gender") v = v || null; else v = v.trim(); row[k] = v; });
+      if (!row.full_name_ar && !row.full_name_en) { toast("اكتب اسم الموظف", "bad"); return false; }
+      if (emp) Object.assign(emp, await api.update("employees", `id=eq.${emp.id}`, row));
+      else { const n = await api.insert("employees", row); HR.emps.push(n); toast("انضاف برقم " + n.code, "ok"); }
+      if (emp) toast("انحفظ", "ok");
+      VIEWS.hr(el); return true;
+    } });
+  const f = $("#modal form");
+  f.oninput = () => { $("#gtot").textContent = fmtMoney(SAL_PARTS.reduce((a, [k]) => a + Number(f[k].value || 0), 0)); };
+}
+
+async function viewEmployee(emp, el) {
+  const [slips, certs] = await Promise.all([
+    api.select("payslips", `select=*&employee_id=eq.${emp.id}&order=month.desc,seq.desc`),
+    api.select("certificates", `select=*&employee_id=eq.${emp.id}&order=seq.desc`)
+  ]);
+  const row = (a, b) => b ? html`<tr><td class="hint">${a}</td><td>${b}</td></tr>` : "";
+  modal(`${emp.code} — ${empName(emp)}`, html`
+    <div class="grid g2"><div class="tbl-wrap"><table><tbody>
+      ${row("الاسم بالإنجليزي", emp.full_name_en)}${row("الجنس", emp.gender === "female" ? "أنثى" : emp.gender === "male" ? "ذكر" : "")}
+      ${row("تاريخ الميلاد", emp.birth_date && fmtDay(emp.birth_date))}${row("الجنسية", emp.nationality_ar || emp.nationality_en)}
+      ${row("رقم الجواز", emp.passport_no)}${row("انتهاء الجواز", emp.passport_expiry && fmtDay(emp.passport_expiry))}${row("رقم الهوية", emp.id_no)}
+      ${row("المسمى", emp.job_title_ar || emp.job_title_en)}${row("القسم", emp.department)}${row("الالتحاق", emp.join_date && fmtDay(emp.join_date))}
+      ${row("الجوال", emp.phone)}${row("الإيميل", emp.email)}</tbody></table></div>
+      <div class="tbl-wrap"><table><tbody>${SAL_PARTS.map(([k, ar]) => html`<tr><td class="hint">${ar}</td><td class="num">${fmtMoney(emp[k])}</td></tr>`)}
+        <tr><td><b>الإجمالي</b></td><td class="num"><b>${fmtMoney(gross(emp))}</b></td></tr></tbody></table>
+        ${emp.notes ? html`<p class="hint" style="margin-top:8px">${emp.notes}</p>` : ""}</div></div>
+    <h3 class="lbl" style="margin-top:14px">إيصالات الرواتب (${slips.length})</h3>
+    ${slips.length ? html`<div class="tbl-wrap"><table><tbody>${slips.map(p => html`<tr data-p="${p.id}" class="${p.status === "void" ? "void" : ""}"><td class="num">${p.receipt_no}</td><td>${monthLabel(p.month, "ar")}</td><td class="num">${fmtMoney(p.total)}</td>
+      <td>${p.status === "void" ? html`<span class="pill bad" title="${p.void_reason || ""}">ملغي</span>` : ""}</td><td><button class="btn sm" data-pp>${ico("dl")} طباعة</button></td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما فيه إيصالات بعد</p>`}
+    <h3 class="lbl" style="margin-top:14px">شهادات الراتب (${certs.length})</h3>
+    ${certs.length ? html`<div class="tbl-wrap"><table><tbody>${certs.map(c => html`<tr data-c="${c.id}" class="${c.status === "void" ? "void" : ""}"><td class="num">${c.cert_no}</td><td>${fmtDay(c.cert_date)}</td><td class="wrap">${c.recipient_entity || c.recipient_name || "—"}</td><td>${c.lang === "ar" ? "عربي" : "English"}</td>
+      <td>${c.status === "void" ? html`<span class="pill bad">ملغية</span>` : ""}</td><td><button class="btn sm" data-cp>${ico("dl")} طباعة</button></td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما فيه شهادات بعد</p>`}`,
+    { wide: true, submit: "", cancel: "إغلاق",
+      extra: `<button type="button" class="btn" id="ve-edit">${ico("edit").__raw} تعديل الملف</button><button type="button" class="btn" id="ve-slip">${ico("inv").__raw} إيصال راتب</button><button type="button" class="btn" id="ve-cert">${ico("content").__raw} شهادة راتب</button>` });
+  const d = $("#modal");
+  $("#ve-edit").onclick = () => editEmployee(emp, el);
+  $("#ve-slip").onclick = () => newPayslip(emp, el);
+  $("#ve-cert").onclick = () => newCertificate(emp, el);
+  d.querySelector(".mb").onclick = e => {
+    const pp = e.target.closest("[data-pp]"); if (pp) return printPayslips([slips.find(x => x.id === pp.closest("[data-p]").dataset.p)]);
+    const cp = e.target.closest("[data-cp]"); if (cp) return printCert(certs.find(x => x.id === cp.closest("[data-c]").dataset.c));
+  };
+}
+
+function printPayslips(list) {
+  const pages = list.map(p => { const tpl = HR.tpls.find(t => t.id === p.template_id) || tplFor("receipt"); return tpl && { tpl, vals: payslipValues(p) }; }).filter(Boolean);
+  if (!pages.length) return toast("ما فيه قالب إيصال فعّال", "bad");
+  printDocs(pages, list.length === 1 ? list[0].receipt_no : "إيصالات الرواتب");
+}
+function printCert(c) {
+  const tpl = HR.tpls.find(t => t.id === c.template_id) || tplFor("certificate", c.lang);
+  if (!tpl) return toast("ما فيه قالب شهادة فعّال", "bad");
+  printDocs([{ tpl, vals: c.data || {} }], c.cert_no);
+}
+
+async function newPayslip(emp, el, preMonth) {
+  const ym = preMonth || monthKey();
+  const lines = SAL_PARTS.filter(([k]) => Number(emp[k]) > 0).map(([k, ar]) => ({ label: ar, en: SAL_PARTS.find(s => s[0] === k)[2], amount: Number(emp[k]), type: "add" }));
+  if (!lines.length) lines.push({ label: "الراتب", en: "Salary", amount: 0, type: "add" });
+  const tpls = HR.tpls.filter(t => t.kind === "receipt" && t.active);
+  if (!tpls.length) return toast("ما فيه قالب إيصال فعّال — أضفه من «القوالب والإعدادات»", "bad");
+  const st = { lines, beingTouched: false };
+  const d = modal(`إيصال راتب — ${emp.code} ${empName(emp)}`, html`
+    <div class="grid g3"><div class="f"><label>شهر الراتب</label><input type="month" name="month" value="${ym}"></div>
+      <div class="f"><label>الفترة من</label><input type="date" name="period_from" value="${ym}-01"></div>
+      <div class="f"><label>إلى</label><input type="date" name="period_to" value="${lastDay(ym)}"></div></div>
+    <div class="bi"><div class="f"><label>تاريخ الإيصال</label><input type="date" name="receipt_date" value="${today()}"></div>
+      <div class="f"><label>القالب</label><select name="tpl">${tpls.map(t => html`<option value="${t.id}" ${t.is_default ? "selected" : ""}>${t.name}</option>`)}</select></div></div>
+    <p id="dup" class="banner warn" hidden></p>
+    <div class="f"><span class="lbl">المبالغ — عدّل أو أضف أو اخصم هالمرة بس (ملف الموظف ما يتغيّر)</span><div class="rows" id="pl"></div>
+      <div class="row"><button type="button" class="btn sm" data-add="add">${ico("plus")} إضافة مبلغ</button><button type="button" class="btn sm" data-add="deduct">− خصم</button></div></div>
+    <div class="calc"><div><span>الصافي</span><b class="num" id="ptot"></b></div><div style="grid-column:span 3"><span>كتابةً</span><b id="pw" style="font-size:13px;font-weight:500"></b></div></div>
+    <div class="f"><label>البيان (يطلع في الإيصال) — يتعبّى تلقائياً</label><textarea name="being_for" dir="ltr" rows="2"></textarea></div>
+    <div class="f"><label>ملاحظة داخلية (ما تنطبع)</label><input type="text" name="notes"></div>`,
+    { wide: true, submit: "إصدار وطباعة", onSubmit: async f => {
+      const clean = st.lines.filter(l => (l.label || "").trim() && Number(l.amount) > 0).map(l => ({ label: l.label.trim(), en: l.en || "", amount: Number(l.amount), type: l.type }));
+      if (!clean.length) { toast("أضف مبلغ واحد على الأقل", "bad"); return false; }
+      const total = calc();
+      if (total < 0) { toast("الصافي بالسالب — راجع الخصومات", "bad"); return false; }
+      const row = { employee_id: emp.id, month: f.month.value + "-01", period_from: f.period_from.value || null, period_to: f.period_to.value || null, receipt_date: f.receipt_date.value || today(),
+        lines: clean, words_en: wordsEn(total), words_ar: wordsAr(total), being_for: f.being_for.value.trim(), notes: f.notes.value.trim(), template_id: f.tpl.value };
+      const saved = await api.insert("payslips", row);
+      toast(`انحفظ الإيصال ${saved.receipt_no}`, "ok");
+      printPayslips([saved]);
+      if (hrTab === "pay") VIEWS.hr(el);
+      return true;
+    } });
+  const f = $("form", d);
+  const lineEn = l => l.en || l.label;
+  const calc = () => st.lines.reduce((a, l) => a + (l.type === "deduct" ? -1 : 1) * Number(l.amount || 0), 0);
+  const autoBeing = () => { const m = f.month.value; const adds = st.lines.filter(l => l.type !== "deduct" && Number(l.amount) > 0), deds = st.lines.filter(l => l.type === "deduct" && Number(l.amount) > 0);
+    return "Salary for " + monthLabel(m, "en") + ": " + adds.map(l => `${lineEn(l)} ${fmtMoney(l.amount)}`).join(" + ") + (deds.length ? " − " + deds.map(l => `${lineEn(l)} ${fmtMoney(l.amount)}`).join(" − ") : ""); };
+  const paint = () => {
+    put($("#pl", d), st.lines.map((l, n) => html`<div class="r pline ${l.type}"><span class="pill ${l.type === "deduct" ? "bad" : "ok"}">${l.type === "deduct" ? "خصم" : "إضافة"}</span>
+      <input type="text" placeholder="البند (مثلاً: ساعات إضافية، سلفة، غياب)" value="${l.label}" data-l="${n}.label">
+      <input type="text" placeholder="بالإنجليزي للإيصال (اختياري)" value="${l.en || ""}" data-l="${n}.en" dir="ltr">
+      <input type="number" min="0" step="0.01" class="num" value="${l.amount}" data-l="${n}.amount">
+      <button type="button" class="btn icon" data-rm="${n}">×</button></div>`));
+    sums();
+  };
+  const sums = () => { const t = calc(); $("#ptot", d).textContent = fmtMoney(t); $("#pw", d).textContent = wordsAr(t);
+    if (!st.beingTouched) f.being_for.value = autoBeing(); };
+  const dupCheck = async () => { const r = await api.select("payslips", `select=receipt_no&employee_id=eq.${emp.id}&month=eq.${f.month.value}-01&status=eq.issued`).catch(() => []);
+    const b = $("#dup", d); b.hidden = !r.length; b.textContent = r.length ? `تنبيه: فيه إيصال لنفس الشهر من قبل (${r.map(x => x.receipt_no).join("، ")}). تقدر تكمل لو هذا دفعة ثانية.` : ""; };
+  f.oninput = e => {
+    const x = e.target.closest("[data-l]");
+    if (x) { const [n, k] = x.dataset.l.split("."); st.lines[+n][k] = k === "amount" ? x.value : x.value; sums(); return; }
+    if (e.target.name === "being_for") st.beingTouched = true;
+    if (e.target.name === "month" && f.month.value) { f.period_from.value = f.month.value + "-01"; f.period_to.value = lastDay(f.month.value); sums(); dupCheck(); }
+  };
+  f.onclick = e => {
+    const a = e.target.closest("[data-add]"); if (a) { st.lines.push({ label: "", en: "", amount: "", type: a.dataset.add }); paint(); $$("#pl input[type=text]", d).slice(-2)[0].focus(); }
+    const r = e.target.closest("[data-rm]"); if (r) { st.lines.splice(+r.dataset.rm, 1); paint(); }
+  };
+  paint(); dupCheck();
+}
+
+function newCertificate(emp, el) {
+  const langs = ["ar", "en"].filter(l => tplFor("certificate", l));
+  if (!langs.length) return toast("ما فيه قالب شهادة فعّال", "bad");
+  const d = modal(`شهادة راتب — ${emp.code} ${empName(emp)}`, html`
+    <div class="bi"><div class="f"><label>اللغة</label><select name="lang">${langs.map(l => html`<option value="${l}">${l === "ar" ? "عربي" : "English"}</option>`)}</select></div>
+      <div class="f"><label>تاريخ الشهادة</label><input type="date" name="cert_date" value="${today()}"></div></div>
+    <div class="bi"><div class="f"><label>موجّهة إلى (التحية)</label><input type="text" name="recipient_name"></div>
+      <div class="f"><label>الجهة (بنك، سفارة، …)</label><input type="text" name="recipient_entity"></div></div>
+    <div class="f"><label>الغرض من الشهادة</label><input type="text" name="purpose"></div>
+    <div class="f"><label>القالب</label><select name="tpl"></select></div>
+    <p class="hint">الاسم والجنسية والجواز والمسمى وتاريخ الالتحاق والراتب تنسحب تلقائياً من ملف الموظف. ${gross(emp) ? "" : html`<b style="color:var(--bad)">تنبيه: الراتب في الملف صفر.</b>`}</p>`,
+    { submit: "إصدار وطباعة", onSubmit: async f => {
+      const lang = f.lang.value, tpl = HR.tpls.find(t => t.id === f.tpl.value);
+      const form = { cert_date: f.cert_date.value || today(), recipient_name: f.recipient_name.value.trim(), recipient_entity: f.recipient_entity.value.trim(), purpose: f.purpose.value.trim() };
+      // the database writes the final certificate number into the stored copy
+      const saved = await api.insert("certificates", { employee_id: emp.id, lang, template_id: tpl.id, ...form, data: certValues(emp, lang, form) });
+      toast(`انحفظت الشهادة ${saved.cert_no}`, "ok");
+      printDocs([{ tpl, vals: saved.data }], saved.cert_no);
+      if (hrTab === "certs") VIEWS.hr(el);
+      return true;
+    } });
+  const f = $("form", d);
+  const sync = () => {
+    const l = f.lang.value;
+    put(f.tpl, HR.tpls.filter(t => t.kind === "certificate" && t.active && t.lang === l).map(t => html`<option value="${t.id}" ${t.is_default ? "selected" : ""}>${t.name}</option>`));
+    if (!f.recipient_name.dataset.touched) f.recipient_name.value = l === "ar" ? "إلى من يهمه الأمر" : "To Whom It May Concern";
+  };
+  f.lang.onchange = sync; f.recipient_name.oninput = () => f.recipient_name.dataset.touched = "1"; f.purpose.oninput = () => f.purpose.dataset.touched = "1";
+  sync();
+}
+
+async function hrPayroll(body, el) {
+  const rows = await api.select("payslips", `select=*&month=eq.${hrMonth}-01&order=seq.asc`);
+  const issued = rows.filter(r => r.status === "issued");
+  const done = new Set(issued.map(r => r.employee_id));
+  const missing = HR.emps.filter(e => e.status === "active" && !done.has(e.id));
+  const [y, m] = hrMonth.split("-").map(Number);
+  const hist = await api.select("payslips", `select=month,total,status&month=gte.${new Date(Date.UTC(y, m - 12, 1)).toISOString().slice(0, 10)}&status=eq.issued`).catch(() => []);
+  const byMonth = {}; hist.forEach(r => { const k = r.month.slice(0, 7); byMonth[k] = (byMonth[k] || 0) + Number(r.total); });
+  put(body, html`<div class="card"><div class="row" style="margin-bottom:12px">
+      <input type="month" id="pm" value="${hrMonth}" style="max-width:200px"><span class="hint">${monthLabel(hrMonth, "ar")}</span>
+      <span class="sp"></span><span class="hint">${issued.length} إيصال · المجموع <b class="num">${fmtMoney(issued.reduce((a, r) => a + Number(r.total), 0))}</b></span>
+      ${issued.length ? html`<button class="btn" id="pall">${ico("dl")} طباعة الكل</button><button class="btn" id="pcsv">${ico("dl")} Excel (CSV)</button>` : ""}</div>
+    ${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>الإيصال</th><th>الموظف</th><th>الإضافات</th><th>الخصومات</th><th>الصافي</th><th>أصدره</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows.map(r => { const a = r.lines.filter(l => l.type !== "deduct").reduce((s, l) => s + Number(l.amount), 0), dd = r.lines.filter(l => l.type === "deduct").reduce((s, l) => s + Number(l.amount), 0);
+        return html`<tr data-p="${r.id}" class="${r.status === "void" ? "void" : ""}"><td class="num">${r.receipt_no}</td><td class="wrap">${(r.emp && r.emp.code) || ""} ${empName(r.emp || {})}</td>
+        <td class="num">${fmtMoney(a)}</td><td class="num">${dd ? fmtMoney(dd) : "—"}</td><td class="num"><b>${fmtMoney(r.total)}</b></td><td>${r.created_by_name || "—"}<br><span class="hint">${fmtDate(r.created_at)}</span></td>
+        <td>${r.status === "void" ? html`<span class="pill bad" title="${r.void_reason || ""}">ملغي — ${r.void_reason || ""}</span>` : html`<span class="pill ok">صادر</span>`}</td>
+        <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-pa="print">${ico("dl")} طباعة</button>${r.status === "issued" ? html`<button class="btn sm danger" data-pa="void">إلغاء</button>` : ""}</div></td></tr>`; })}</tbody></table></div>`
+      : html`<p class="empty">ما فيه إيصالات لهذا الشهر بعد</p>`}
+    ${missing.length ? html`<div class="banner warn" style="margin-top:12px">ما انصرف لهم إيصال هذا الشهر: ${missing.map(e => html`<button class="btn sm" data-miss="${e.id}" style="margin:2px">${e.code} ${empName(e)}</button>`)}</div>` : ""}</div>
+    <div class="card"><h2>الرواتب آخر ١٢ شهر</h2>${Object.keys(byMonth).length ? html`<div class="tbl-wrap"><table><tbody>${Object.keys(byMonth).sort().reverse().map(k => html`<tr><td>${monthLabel(k, "ar")}</td><td class="num">${fmtMoney(byMonth[k])}</td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما فيه بيانات بعد</p>`}</div>`);
+  $("#pm", body).onchange = e => { if (e.target.value) { hrMonth = e.target.value; VIEWS.hr(el); } };
+  const pa = $("#pall", body); if (pa) pa.onclick = () => printPayslips(issued);
+  const pc = $("#pcsv", body); if (pc) pc.onclick = () => {
+    const lines = [["Receipt", "Code", "Name", "Month", "Additions", "Deductions", "Net", "Status", "Issued by", "Issued at"]].concat(rows.map(r => {
+      const a = r.lines.filter(l => l.type !== "deduct").reduce((s, l) => s + Number(l.amount), 0), dd = r.lines.filter(l => l.type === "deduct").reduce((s, l) => s + Number(l.amount), 0);
+      return [r.receipt_no, (r.emp || {}).code, empName(r.emp || {}), hrMonth, a, dd, r.total, r.status, r.created_by_name || "", r.created_at]; }));
+    const csv = "﻿" + lines.map(l => l.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pressio-payroll-${hrMonth}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+  };
+  body.onclick = async e => {
+    const ms = e.target.closest("[data-miss]"); if (ms) return newPayslip(HR.emps.find(x => x.id === ms.dataset.miss), el, hrMonth);
+    const b = e.target.closest("[data-pa]"); if (!b) return;
+    const r = rows.find(x => x.id === b.closest("[data-p]").dataset.p);
+    if (b.dataset.pa === "print") return printPayslips([r]);
+    modal("إلغاء الإيصال " + r.receipt_no, html`<p class="hint">الإيصال يبقى محفوظ في السجل ومكتوب عليه «ملغي» مع السبب — ما ينحذف.</p><div class="f"><label>السبب *</label><input type="text" name="why" required></div>`,
+      { submit: "إلغاء الإيصال", layer: "#modal", onSubmit: async f => { if (!f.why.value.trim()) { toast("اكتب السبب", "bad"); return false; }
+        await api.rpc("void_hr_doc", { p_kind: "payslip", p_id: r.id, p_reason: f.why.value.trim() }); toast("انلغى", "ok"); VIEWS.hr(el); return true; } });
+  };
+}
+
+async function hrCerts(body, el) {
+  const rows = await api.select("certificates", "select=*&order=seq.desc&limit=300");
+  put(body, html`<div class="card">${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>الرقم</th><th>التاريخ</th><th>الموظف</th><th>الجهة / الغرض</th><th>اللغة</th><th>أصدرها</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${rows.map(c => { const e = HR.emps.find(x => x.id === c.employee_id) || {}; return html`<tr data-c="${c.id}" class="${c.status === "void" ? "void" : ""}"><td class="num">${c.cert_no}</td><td>${fmtDay(c.cert_date)}</td>
+        <td class="wrap">${e.code || ""} ${empName(e)}</td><td class="wrap">${c.recipient_entity || c.recipient_name || "—"}${c.purpose ? html`<br><span class="hint">${c.purpose}</span>` : ""}</td><td>${c.lang === "ar" ? "عربي" : "English"}</td>
+        <td>${c.created_by_name || "—"}</td><td>${c.status === "void" ? html`<span class="pill bad">ملغية — ${c.void_reason || ""}</span>` : html`<span class="pill ok">صادرة</span>`}</td>
+        <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-ca="print">${ico("dl")} طباعة</button>${c.status === "issued" ? html`<button class="btn sm danger" data-ca="void">إلغاء</button>` : ""}</div></td></tr>`; })}</tbody></table></div>`
+    : html`<p class="empty">ما فيه شهادات بعد — افتح ملف الموظف واضغط «شهادة»</p>`}</div>`);
+  body.onclick = e => {
+    const b = e.target.closest("[data-ca]"); if (!b) return;
+    const c = rows.find(x => x.id === b.closest("[data-c]").dataset.c);
+    if (b.dataset.ca === "print") return printCert(c);
+    modal("إلغاء الشهادة " + c.cert_no, html`<p class="hint">تبقى محفوظة في السجل ومكتوب عليها «ملغية» مع السبب.</p><div class="f"><label>السبب *</label><input type="text" name="why"></div>`,
+      { submit: "إلغاء الشهادة", onSubmit: async f => { if (!f.why.value.trim()) { toast("اكتب السبب", "bad"); return false; }
+        await api.rpc("void_hr_doc", { p_kind: "certificate", p_id: c.id, p_reason: f.why.value.trim() }); toast("انلغت", "ok"); VIEWS.hr(el); return true; } });
+  };
+}
+
+const TPL_KEYS = {
+  receipt: [["receipt_no", "رقم الإيصال"], ["receipt_date", "التاريخ"], ["employee_name", "اسم الموظف"], ["salary_month", "شهر الراتب"], ["id_passport", "الجواز / الهوية"],
+    ["period_from", "الفترة من"], ["period_to", "إلى"], ["job_title", "المسمى"], ["department", "القسم"], ["amount_aed", "المبلغ"], ["amount_in_words", "المبلغ كتابةً"], ["being_for", "البيان"]],
+  certificate: [["cert_no", "رقم الشهادة"], ["certificate_date", "التاريخ"], ["recipient_name", "التحية"], ["recipient_entity", "الجهة"], ["employee_name", "اسم الموظف"], ["nationality", "الجنسية"],
+    ["passport_id", "الجواز"], ["job_title", "المسمى"], ["employment_start_date", "تاريخ الالتحاق"], ["basic_salary", "الأساسي"], ["housing_allowance", "السكن"],
+    ["transport_allowance", "المواصلات"], ["other_allowance", "أخرى"], ["total_salary", "الإجمالي"], ["salary_in_words", "الإجمالي كتابةً"], ["certificate_purpose", "الغرض"]]
+};
+function sampleValues(kind, lang) {
+  const e = { code: "PR-000", full_name_ar: "اسم الموظف", full_name_en: "Employee Name", nationality_ar: "الجنسية", nationality_en: "Nationality", passport_no: "A1234567",
+    job_title_ar: "باريستا", job_title_en: "Barista", department: "البار", join_date: "2025-01-01", basic_salary: 2500, housing_allowance: 500, transport_allowance: 200, other_allowance: 0 };
+  if (kind === "receipt") return payslipValues({ receipt_no: "SR-00000", receipt_date: today(), month: monthKey() + "-01", period_from: monthKey() + "-01", period_to: lastDay(monthKey()), emp: e,
+    lines: [{ label: "Basic", en: "Basic", amount: 2500, type: "add" }, { label: "Housing", en: "Housing", amount: 500, type: "add" }, { label: "Advance", en: "Advance", amount: 100, type: "deduct" }], total: 2900 });
+  return certValues(e, lang, { cert_no: "SC-00000", recipient_name: lang === "ar" ? "إلى من يهمه الأمر" : "To Whom It May Concern", recipient_entity: lang === "ar" ? "البنك" : "Bank", purpose: lang === "ar" ? "فتح حساب" : "Opening a bank account" });
+}
+
+async function hrTemplates(body, el) {
+  const hs = HR.settings;
+  put(body, html`<div class="card"><h2 style="margin-bottom:10px">القوالب</h2>
+      <div class="tbl-wrap"><table><thead><tr><th>القالب</th><th>النوع</th><th>اللغة</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${HR.tpls.map(t => html`<tr data-t="${t.id}"><td>${t.name}${t.is_default ? html` <span class="pill ok">الأساسي</span>` : ""}</td><td>${t.kind === "receipt" ? "إيصال راتب" : "شهادة راتب"}</td><td>${t.lang === "ar" ? "عربي" : "English"}</td>
+        <td>${t.active ? "فعّال" : html`<span class="hint">موقوف</span>`}</td><td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-ta="preview">${ico("eye")} معاينة</button>
+        ${isAdmin() ? html`${t.is_default ? "" : html`<button class="btn sm" data-ta="default">اجعله الأساسي</button>`}<button class="btn sm" data-ta="toggle">${t.active ? "إيقاف" : "تفعيل"}</button>` : ""}</div></td></tr>`)}</tbody></table></div>
+      ${isAdmin() ? html`<div class="banner" style="margin-top:12px"><b>رفع قالب جديد:</b> صمّم القالب (Canva / Word / Acrobat) واحفظه PDF <b>قابل للتعبئة</b>، وسمِّ الخانات بنفس أسماء الخانات تحت. الموقع يقرأ مكان كل خانة ويعبّيها تلقائياً.
+        <div class="row" style="margin-top:10px"><select id="nk" style="max-width:160px"><option value="receipt">إيصال راتب</option><option value="certificate">شهادة راتب</option></select>
+        <select id="nl" style="max-width:120px"><option value="en">English</option><option value="ar">عربي</option></select>
+        <label class="btn primary">${ico("upl")} اختر ملف PDF<input type="file" id="npdf" accept="application/pdf" hidden></label></div>
+        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">أسماء الخانات</summary><p class="hint ltr" style="direction:ltr;text-align:left">
+          receipt: ${TPL_KEYS.receipt.map(k => k[0]).join(", ")}<br>certificate: ${TPL_KEYS.certificate.map(k => k[0]).join(", ")}</p></details></div>` : ""}</div>
+    <div class="card"><h2>بيانات الشركة في المستندات</h2>
+      <form id="hsf" class="grid" novalidate>
+        <div class="bi"><div class="f"><label>اسم الشركة بالعربي</label><input name="company_ar" value="${hs.company_ar || ""}"></div><div class="f"><label>Company name (English)</label><input name="company_en" dir="ltr" value="${hs.company_en || ""}"></div></div>
+        <div class="bi"><div class="f"><label>العنوان بالعربي</label><input name="address_ar" value="${hs.address_ar || ""}"></div><div class="f"><label>الهاتف</label><input name="phone" dir="ltr" value="${hs.phone || ""}"></div></div>
+        <div class="bi"><div class="f"><label>اسم المفوّض بالتوقيع (عربي)</label><input name="signatory_ar" value="${hs.signatory_ar || ""}"></div><div class="f"><label>المنصب (عربي)</label><input name="signatory_title_ar" value="${hs.signatory_title_ar || ""}"></div></div>
+        <div class="f"><label>الأقسام (افصل بفاصلة)</label><input name="departments" value="${(hs.departments || []).join("، ")}"></div>
+        <div class="row end"><button class="btn primary" type="submit">حفظ</button></div></form>
+      <p class="hint">القالب الإنجليزي الحالي مطبوع فيه اسم الشركة والتوقيع كما هي في ملف الـ PDF.</p></div>
+    ${isAdmin() ? html`<div class="card"><div class="row between"><div><h2>نسخة احتياطية لبيانات الموظفين</h2><p class="hint">تنحفظ نسخة تلقائية كل يوم على السيرفر (٩٠ يوم). هنا تقدر تنزّل نسخة على جهازك.</p></div>
+      <button class="btn" id="hrbk">${ico("dl")} تنزيل نسخة الآن</button></div></div>` : ""}`);
+  $("#hsf", body).onsubmit = async e => {
+    e.preventDefault(); const f = e.target;
+    const data = { ...HR.settings }; ["company_ar", "company_en", "address_ar", "phone", "signatory_ar", "signatory_title_ar"].forEach(k => data[k] = f[k].value.trim());
+    data.departments = f.departments.value.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+    await busy($("button[type=submit]", f), async () => { await api.update("hr_settings", "id=eq.1", { data }); HR.settings = data; toast("انحفظ", "ok"); });
+  };
+  const bk = $("#hrbk", body); if (bk) bk.onclick = () => busy(bk, async () => {
+    const id = await api.rpc("save_hr_backup"); const r = await api.select("hr_backups", `select=data&id=eq.${id}`);
+    download(`pressio-hr-backup-${today()}.json`, r[0].data); toast("انحفظ الملف", "ok"); });
+  const np = $("#npdf", body); if (np) np.onchange = e => { const file = e.target.files[0]; e.target.value = ""; if (file) uploadTemplate(file, $("#nk", body).value, $("#nl", body).value, el); };
+  body.onclick = async e => {
+    const b = e.target.closest("[data-ta]"); if (!b) return;
+    const t = HR.tpls.find(x => x.id === b.closest("[data-t]").dataset.t);
+    if (b.dataset.ta === "preview") return printDocs([{ tpl: t, vals: sampleValues(t.kind, t.lang) }], "معاينة — " + t.name);
+    if (b.dataset.ta === "toggle") return busy(b, async () => { await api.update("doc_templates", `id=eq.${enc(t.id)}`, { active: !t.active }); VIEWS.hr(el); });
+    if (b.dataset.ta === "default") return busy(b, async () => {
+      for (const o of HR.tpls.filter(x => x.kind === t.kind && x.lang === t.lang && x.is_default)) await api.update("doc_templates", `id=eq.${enc(o.id)}`, { is_default: false });
+      await api.update("doc_templates", `id=eq.${enc(t.id)}`, { is_default: true, active: true }); VIEWS.hr(el); });
+  };
+}
+
+/* a new fillable PDF becomes a template: page 1 is drawn as the background, each form field's box becomes a slot */
+async function uploadTemplate(file, kind, lang, el) {
+  await busy(null, async () => {
+    if (!window.pdfjsLib) {
+      await new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; s.onload = res; s.onerror = () => rej(new Error("تعذّر تحميل قارئ PDF")); document.head.appendChild(s); });
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+    const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const page = await pdf.getPage(1);
+    const vp1 = page.getViewport({ scale: 1 });
+    const annots = await page.getAnnotations();
+    const known = new Set(TPL_KEYS[kind].map(k => k[0]));
+    const fields = {}, unknown = [];
+    annots.filter(a => a.subtype === "Widget" && a.fieldName).forEach(a => {
+      const name = a.fieldName.split(".").pop();
+      const [x1, y1, x2, y2] = a.rect;
+      const size = Number((String(a.defaultAppearanceData && a.defaultAppearanceData.fontSize) || "").trim()) || Math.min(11, (y2 - y1) * 0.6);
+      if (known.has(name)) fields[name] = { x: +x1.toFixed(1), y: +(vp1.height - y2).toFixed(1), w: +(x2 - x1).toFixed(1), h: +(y2 - y1).toFixed(1), size: +size.toFixed(1), ...(lang === "ar" ? { dir: "rtl" } : {}), ...(a.multiLine ? { multi: true } : {}) };
+      else unknown.push(name);
+    });
+    if (!Object.keys(fields).length) throw new Error("ما لقيت خانات بأسماء معروفة في الملف — تأكد إنه PDF قابل للتعبئة وأسماء الخانات صحيحة");
+    const scale = 200 / 72, vp = page.getViewport({ scale });
+    const canvas = document.createElement("canvas"); canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+    const ctx = canvas.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp, annotationMode: window.pdfjsLib.AnnotationMode ? window.pdfjsLib.AnnotationMode.DISABLE : 0 }).promise;
+    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+    const path = `templates/${kind}-${lang}-${uid()}.png`;
+    await api.upload("media", path, blob);
+    const missing = TPL_KEYS[kind].filter(k => !fields[k[0]]).map(k => k[1]);
+    const t = await api.insert("doc_templates", { kind, lang, name: file.name.replace(/\.pdf$/i, ""), page: { w: +vp1.width.toFixed(2), h: +vp1.height.toFixed(2) }, bg_url: api.publicUrl(path), fields, active: true, is_default: false });
+    toast(`انضاف القالب (${Object.keys(fields).length} خانة)` + (missing.length ? ` — خانات ناقصة: ${missing.join("، ")}` : "") + (unknown.length ? ` — تم تجاهل: ${unknown.join(", ")}` : ""), "ok");
+    await hrLoad(true); VIEWS.hr(el);
+    printDocs([{ tpl: t, vals: sampleValues(kind, lang) }], "معاينة القالب الجديد");
+  });
 }
 
 start();

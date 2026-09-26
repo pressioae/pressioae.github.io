@@ -86,7 +86,7 @@ hr{border:0;border-top:1px solid var(--line-soft);margin:18px 0}
 .f{display:flex;flex-direction:column;gap:5px;min-width:0}
 .f label,.lbl{font-size:12.5px;color:var(--ink-2);font-weight:500}
 .f small{color:var(--muted);font-size:12px}
-input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],input[type=url],input[type=tel],input[type=search],select,textarea{
+input[type=text],input[type=email],input[type=password],input[type=number],input[type=date],input[type=month],input[type=time],input[type=url],input[type=tel],input[type=search],select,textarea{
   width:100%;min-height:42px;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;font-size:14.5px}
 textarea{min-height:84px;resize:vertical;line-height:1.6}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(63,50,43,.08)}
@@ -254,3 +254,10 @@ td select[data-r]{min-width:150px}
 .pwbox{position:relative}
 .pwbox input{padding-inline-end:48px}
 .pwbox .btn.icon{position:absolute;inset-inline-end:4px;top:50%;transform:translateY(-50%);border:0;background:transparent}
+
+/* people & payroll */
+.rows .r.pline{grid-template-columns:auto minmax(0,2fr) minmax(0,1.4fr) 120px auto}
+@media (max-width:700px){.rows .r.pline{grid-template-columns:auto minmax(0,1fr) 100px auto}.rows .r.pline input[dir=ltr]{display:none}}
+tr.void td{opacity:.55}
+tr.void td:last-child,tr.void td:nth-last-child(2){opacity:1}
+h3.lbl{margin:10px 0 2px;font-size:14px}
