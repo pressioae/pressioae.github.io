@@ -1,0 +1,40 @@
+# Runs every day on GitHub's servers (free for public repositories):
+#  1. keeps the Supabase project awake (free projects pause after 7 idle days)
+#  2. saves the public menu/site content to data/site.json — the site uses it
+#     as an instant fallback if the database is ever unreachable.
+# Private data (invoices, reports) is never written here.
+name: Daily sync & backup
+on:
+  schedule:
+    - cron: "15 21 * * *"   # 01:15 Dubai time
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch site content
+        env:
+          SB_URL: https://sfhqhrqrmakypptqtbxf.supabase.co
+          SB_KEY: sb_publishable_-Z0_rDQYjFTJC5joMpSFpA_YmU-79h1
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$SB_URL/rest/v1/rpc/get_site" \
+            -H "apikey: $SB_KEY" -H "Content-Type: application/json" -d '{}' -o /tmp/site.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open('/tmp/site.json'))
+          assert d.get('settings') and isinstance(d.get('items'), list) and len(d['items']) > 0, 'empty response'
+          json.dump(d, open('data/site.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+          print('items:', len(d['items']))
+          PY
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- data/site.json; then echo "No content changes"; exit 0; fi
+          git config user.name "pressio-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/site.json
+          git commit -m "Daily content snapshot"
+          git push
