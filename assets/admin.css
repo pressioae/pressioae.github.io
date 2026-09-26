@@ -232,3 +232,10 @@ dialog form{display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
 .banner.ok{background:#EEF3EC;border:1px solid #CAD8C5;color:#3A5234}
 .muted{color:var(--muted)}
 .ltr{direction:ltr;unicode-bidi:isolate}
+
+/* weekly hours editor */
+.wk{display:grid;gap:8px}
+.wk__row{display:grid;grid-template-columns:90px minmax(0,1fr) auto minmax(0,1fr) auto;align-items:center;gap:8px}
+.wk__row input[type=time]{min-width:0}
+.wk__row .check{white-space:nowrap}
+@media (max-width:520px){.wk__row{grid-template-columns:70px minmax(0,1fr) auto minmax(0,1fr);}.wk__row .check{grid-column:2 / -1}}

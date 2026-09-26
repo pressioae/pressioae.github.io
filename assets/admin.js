@@ -705,11 +705,22 @@ const SECTIONS = [
   { id: "delivery", t: "التوصيل", paths: ["home.delivery"], render: d => listEd("home.delivery", "منصات التوصيل", d, (p, n) => html`${bi(`home.delivery.${n}`, "الاسم", d)}${biD(`home.delivery.${n}`, "وصف قصير", d)}
       ${txt(`home.delivery.${n}.url`, "رابط صفحتكم في المنصة", d, "url", "https://…")}`, { ar: "", en: "", dar: "", den: "", url: "" }) },
   { id: "info", t: "معلومات الزيارة", paths: ["home.info"], render: d => html`
-      ${bi("home.info.hours", "الأوقات (نص)", d)}
-      <div class="bi">${num("home.info.open_from", "نفتح الساعة (0–24)", d)}${num("home.info.open_to", "نسكّر الساعة (24 = منتصف الليل)", d)}</div>
-      ${bi("home.info.addr", "العنوان", d)}
+      ${bi("home.info.area", "المنطقة (تطلع في الواجهة: نشوفك في …)", d)}
+      ${bi("home.info.addr", "العنوان الكامل", d)}
+      <div class="f"><span class="lbl">أوقات الدوام لكل يوم</span>
+        <p class="hint">إذا وقت السكّر بعد منتصف الليل (مثلاً ١ الفجر) اكتبه عادي 01:00 — الموقع يفهم إنه اليوم الثاني. الموقع يحسب «مفتوح الحين» من هذا الجدول.</p>
+        <div class="wk">${[1, 2, 3, 4, 5, 6, 0].map(n => html`<div class="wk__row"><b>${DAYS_AR[n]}</b>
+          <input type="time" data-p="home.info.week.${n}.from" value="${getPath(d, `home.info.week.${n}.from`) ?? ""}" dir="ltr" aria-label="${DAYS_AR[n]} من">
+          <span>–</span>
+          <input type="time" data-p="home.info.week.${n}.to" value="${getPath(d, `home.info.week.${n}.to`) ?? ""}" dir="ltr" aria-label="${DAYS_AR[n]} إلى">
+          ${chk(`home.info.week.${n}.closed`, "مسكّر", d)}</div>`)}</div></div>
+      ${bi("home.info.hours_note", "ملاحظة تحت الأوقات (اختياري)", d)}
+      ${bi("home.info.hours", "الأوقات كنص (تُستخدم بس إذا الجدول فاضي)", d)}
       <div class="bi">${txt("home.info.phone", "الهاتف", d, "tel")}${txt("home.info.ig", "إنستغرام", d, "text", "@pressio.ae")}</div>
-      <div class="bi">${txt("home.info.map", "رابط Google Maps", d, "url", "https://maps.app.goo.gl/…")}${txt("home.info.whatsapp", "واتساب (اختياري)", d, "tel")}</div>` },
+      <div class="bi">${txt("home.info.map", "رابط Google Maps", d, "url", "https://maps.app.goo.gl/…")}${txt("home.info.whatsapp", "واتساب (اختياري)", d, "tel")}</div>
+      <div class="bi">${num("home.info.rating.value", "تقييم Google (مثلاً 5.0)", d)}${num("home.info.rating.count", "عدد التقييمات", d)}</div>
+      ${txt("home.info.rating.url", "رابط التقييمات (اختياري — الافتراضي رابط الخريطة)", d, "url")}
+      ${listEd("home.info.features", "الخدمات (جلسات داخلية، درايف ثرو، مواقف…)", d, (p, n) => bi(`home.info.features.${n}`, "الخدمة", d), { ar: "", en: "" })}` },
   { id: "loyalty", t: "برنامج الولاء", paths: ["loyalty"], render: d => html`
       ${txt("loyalty.url", "رابط الانضمام", d, "url")}${bi("loyalty.title", "العنوان", d)}${bi("loyalty.body", "الشرح", d, true)}
       ${bi("loyalty.cta", "نص الزر", d)}${bi("loyalty.scan", "تحت البطاقة", d)}
@@ -726,6 +737,7 @@ const SECTIONS = [
         <div class="row">${chk(`report_fields.${n}.in_sales`, "يدخل في إجمالي المبيعات", d)}${chk(`report_fields.${n}.active`, "فعّالة", d)}</div>`,
         { key: "", ar: "", en: "", kind: "amount", group: "other", in_sales: true, active: true })}` }
 ];
+const DAYS_AR = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const bi = (p, label, d, area = false) => html`<div class="bi">${field(p + ".ar", label + " — عربي", d, area)}${field(p + ".en", label + " — English", d, area, "ltr")}</div>`;
 const biK = (p, k, label, d, area = false) => html`<div class="bi">${field(`${p}.${k}_ar`, label + " — عربي", d, area)}${field(`${p}.${k}_en`, label + " — English", d, area, "ltr")}</div>`;
 const biD = (p, label, d) => html`<div class="bi">${field(p + ".dar", label + " — عربي", d, true)}${field(p + ".den", label + " — English", d, true, "ltr")}</div>`;

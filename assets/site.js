@@ -15,20 +15,22 @@
         seeMenu:"شوف المنيو",search:"دوّر في المنيو…",all:"الكل",signature:"المفضّلة عندنا",signatureK:"اختياراتنا",
         menuK:"المنيو",menuT:"كل شي نحضّره",aboutK:"عن pressio",spaceK:"المكان",spaceT:"مساحة تريّحك",
         galK:"من البار",galT:"لقطات من يومنا",loyK:"برنامج الولاء",dlvK:"التوصيل",dlvT:"اطلبنا لين عندك",
-        visitK:"زورونا",visitT:"نشوفك في الراشدية",hours:"الأوقات",addr:"الموقع",phone:"الهاتف",ig:"إنستغرام",
+        visitK:"زورونا",visitT:"نشوفك في",hours:"الأوقات",addr:"الموقع",phone:"الهاتف",ig:"إنستغرام",
         map:"افتح الخريطة",soon:"قريباً",orderOn:"اطلب من",out:"غير متوفر",back:"يرجع",served:"يُقدّم",
         openNow:"مفتوح الحين",closedNow:"مسكّر الحين — نفتح",until:"لين",nores:"ما لقينا شي بهالاسم",
         staff:"دخول الموظفين",rights:"جميع الحقوق محفوظة",skip:"تخطّى إلى المحتوى",preview:"معاينة — الموقع تحت الصيانة للزوار",
-        exitPreview:"خروج",cur:"د.إ",am:"ص",pm:"م",noon:"ظ",midnight:"منتصف الليل",daily:"يومياً"},
+        exitPreview:"خروج",cur:"د.إ",am:"ص",pm:"م",noon:"ظ",midnight:"منتصف الليل",daily:"يومياً",closed:"مسكّر",today:"اليوم",features:"الخدمات",rating:"على Google",reviews:"تقييم",
+        days:["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"]},
     en:{menu:"Menu",about:"About",space:"The space",loyalty:"Loyalty",visit:"Visit",order:"Order delivery",
         seeMenu:"See the menu",search:"Search the menu…",all:"All",signature:"House favourites",signatureK:"Our picks",
         menuK:"Menu",menuT:"Everything we make",aboutK:"About pressio",spaceK:"The space",spaceT:"A room that works",
         galK:"From the bar",galT:"Moments from our day",loyK:"Loyalty",dlvK:"Delivery",dlvT:"Have it brought to you",
-        visitK:"Visit",visitT:"See you in Rashidiya",hours:"Hours",addr:"Location",phone:"Phone",ig:"Instagram",
+        visitK:"Visit",visitT:"See you in",hours:"Hours",addr:"Location",phone:"Phone",ig:"Instagram",
         map:"Open the map",soon:"Soon",orderOn:"Order on",out:"Sold out",back:"Back",served:"Served",
         openNow:"Open now",closedNow:"Closed — opens",until:"until",nores:"Nothing matches that",
         staff:"Staff sign in",rights:"All rights reserved",skip:"Skip to content",preview:"Preview — visitors see the maintenance page",
-        exitPreview:"Exit",cur:"AED",am:"AM",pm:"PM",noon:"PM",midnight:"midnight",daily:"Daily"}
+        exitPreview:"Exit",cur:"AED",am:"AM",pm:"PM",noon:"PM",midnight:"midnight",daily:"Daily",closed:"Closed",today:"Today",features:"Services",rating:"on Google",reviews:"reviews",
+        days:["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]}
   };
 
   var S = null;          // site data
@@ -74,6 +76,52 @@
       return h + m / 60;
     }catch(e){ var d = new Date(); return d.getHours() + d.getMinutes() / 60; }
   }
+  function dubaiDay(){
+    try{
+      var w = new Intl.DateTimeFormat("en-US", {timeZone: CFG.tz || "Asia/Dubai", weekday:"short"}).format(new Date());
+      return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(w);
+    }catch(e){ return new Date().getDay(); }
+  }
+  function toMin(v){ var m = /^(\d{1,2}):(\d{2})/.exec(String(v || "")); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function timeLabel(v){
+    var mm = toMin(v); if(mm == null) return "";
+    mm = mm % 1440; var h = Math.floor(mm / 60), m = mm % 60;
+    if(h === 0 && m === 0) return t("midnight");
+    var hh = h % 12 || 12, suf = h < 12 ? t("am") : t("pm");
+    return numAr(hh + (m ? ":" + (m < 10 ? "0" : "") + m : "")) + " " + suf;
+  }
+  function daySpan(d){ // [start,end] minutes from that day's midnight, end may pass 1440
+    if(!d || d.closed) return null;
+    var f = toMin(d.from), e = toMin(d.to); if(f == null || e == null) return null;
+    if(e <= f) e += 1440; return [f, e];
+  }
+  function hasWeek(info){ return !!(info && info.week && [0,1,2,3,4,5,6].some(function(d){ return daySpan(info.week[d]); })); }
+  function openState(info){ // {open, label} from the weekly table
+    var wk = info.week, day = dubaiDay(), m = Math.round(dubaiNow() * 60);
+    var y = daySpan(wk[(day + 6) % 7]), td = daySpan(wk[day]);
+    if(y && y[1] > 1440 && m < y[1] - 1440) return {open:true, label: t("until") + " " + timeLabel(wk[(day + 6) % 7].to)};
+    if(td && m >= td[0] && m < td[1]) return {open:true, label: t("until") + " " + timeLabel(wk[day].to)};
+    if(td && m < td[0]) return {open:false, label: timeLabel(wk[day].from)};
+    for(var k = 1; k <= 7; k++){
+      var n = (day + k) % 7, sp = daySpan(wk[n]);
+      if(sp) return {open:false, label: (k === 1 ? "" : t("days")[n] + " ") + timeLabel(wk[n].from)};
+    }
+    return {open:false, label:""};
+  }
+  function weekRows(info){ // Monday-first, consecutive equal days grouped
+    var order = [1,2,3,4,5,6,0], rows = [], today = dubaiDay();
+    order.forEach(function(d){
+      var x = info.week[d] || {}, key = x.closed || !daySpan(x) ? "c" : x.from + "-" + x.to, last = rows[rows.length - 1];
+      if(last && last.key === key){ last.days.push(d); } else rows.push({key:key, days:[d], x:x});
+    });
+    return rows.map(function(r){
+      var nm = t("days"), lbl = nm[r.days[0]] + (r.days.length > 1 ? " – " + nm[r.days[r.days.length - 1]] : "");
+      var val = r.key === "c" ? t("closed") : timeLabel(r.x.from) + " – " + timeLabel(r.x.to);
+      return '<li' + (r.days.indexOf(today) > -1 ? ' class="is-today"' : '') + '><span>' + esc(lbl) + '</span><span>' + esc(val) + '</span></li>';
+    }).join("");
+  }
+  function area(info){ return L(info.area) || L(info.addr).split(/[،,]/).slice(-2).join("،").trim(); }
+
   function hourLabel(h){
     h = Number(h);
     if(h === 24 || h === 0) return t("midnight");
@@ -176,14 +224,18 @@
 
   function renderHero(st, home){
     var h = home.hero || {};
-    $("#hero-eyebrow").textContent = ((st.brand || {}).tagline || "Speciality Coffee") + " · " + L((home.info || {}).addr).split(/[،,]/)[0];
+    $("#hero-eyebrow").textContent = ((st.brand || {}).tagline || "Speciality Coffee") + " · " + area(home.info || {});
     $("#hero-title").textContent = h["title_" + lang] || h.title_en || "Pause. Sip. Pressio.";
     $("#hero-sub").textContent = h["sub_" + lang] || h.sub_en || "";
     var hi = $("#hero-img"), want = h.image && h.image !== "hero" ? src(h.image) : "";
     if(want && hi.getAttribute("src") !== want){ hi.removeAttribute("srcset"); hi.src = want; }
     hi.alt = L(media(h.image || "hero") || {}, "alt") || "pressio";
     var info = home.info || {}, s = $("#status");
-    if(info.open_from != null && info.open_to != null){
+    if(hasWeek(info)){
+      var os = openState(info);
+      s.hidden = false; s.className = "status" + (os.open ? " is-open" : "");
+      s.textContent = os.open ? (t("openNow") + " · " + os.label) : (t("closedNow") + " " + os.label);
+    } else if(info.open_from != null && info.open_to != null){
       var now = dubaiNow(), from = +info.open_from, to = +info.open_to;
       var open = to > from ? (now >= from && now < to) : (now >= from || now < to);
       s.hidden = false; s.className = "status" + (open ? " is-open" : "");
@@ -332,18 +384,24 @@
 
   function telHref(p){ var d = String(p || "").replace(/\D/g, ""); if(d.charAt(0) === "0") d = "971" + d.slice(1); return "tel:+" + d; }
   function igHref(h){ return "https://www.instagram.com/" + String(h || "").replace(/^@/, "") + "/"; }
-  function mapHref(info){ return info.map || ("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("pressio " + (info.addr && info.addr.en || "Rashidiya Dubai"))); }
+  function mapHref(info){ return info.map || ("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("pressio " + (info.addr && info.addr.en || "Dubai"))); }
 
   function secVisit(home){
     var i = home.info || {};
-    return '<section class="sec sec--paper" id="visit"><div class="wrap reveal">' + head(t("visitK"), t("visitT"),
+    var hrs = hasWeek(i) ? '<ul class="hours">' + weekRows(i) + '</ul>' + (L(i.hours_note) ? '<p class="note">' + esc(L(i.hours_note)) + '</p>' : "") : esc(L(i.hours));
+    var rt = i.rating && +i.rating.value ? '<a class="rating" href="' + esc(i.rating.url || mapHref(i)) + '" target="_blank" rel="noopener"><b>★ ' + esc(numAr((+i.rating.value).toFixed(1))) + '</b> '
+      + esc(t("rating")) + (i.rating.count ? ' · ' + esc(numAr(i.rating.count)) + ' ' + esc(t("reviews")) : "") + '</a>' : "";
+    var ft = (i.features || []).filter(function(f){ return L(f); });
+    return '<section class="sec sec--paper" id="visit"><div class="wrap reveal">' + head(t("visitK"), t("visitT") + " " + area(i),
         '<a class="btn btn--ghost" href="' + esc(mapHref(i)) + '" target="_blank" rel="noopener">' + esc(t("map")) + '</a>')
       + '<dl class="visit">'
-      + '<div><dt>' + esc(t("hours")) + '</dt><dd>' + esc(L(i.hours)) + '</dd></div>'
-      + '<div><dt>' + esc(t("addr")) + '</dt><dd><a href="' + esc(mapHref(i)) + '" target="_blank" rel="noopener">' + esc(L(i.addr)) + '</a></dd></div>'
+      + '<div class="visit__hours"><dt>' + esc(t("hours")) + '</dt><dd>' + hrs + '</dd></div>'
+      + '<div><dt>' + esc(t("addr")) + '</dt><dd><a href="' + esc(mapHref(i)) + '" target="_blank" rel="noopener">' + esc(L(i.addr)) + '</a>' + (rt ? '<div>' + rt + '</div>' : "") + '</dd></div>'
       + (i.phone ? '<div><dt>' + esc(t("phone")) + '</dt><dd><a href="' + esc(telHref(i.phone)) + '" dir="ltr">' + esc(i.phone) + '</a></dd></div>' : "")
       + (i.ig ? '<div><dt>' + esc(t("ig")) + '</dt><dd><a href="' + esc(igHref(i.ig)) + '" target="_blank" rel="noopener" dir="ltr">' + esc(i.ig) + '</a></dd></div>' : "")
-      + '</dl></div></section>';
+      + '</dl>'
+      + (ft.length ? '<div class="feats"><p class="kicker">' + esc(t("features")) + '</p><ul>' + ft.map(function(f){ return '<li>' + esc(L(f)) + '</li>'; }).join("") + '</ul></div>' : "")
+      + '</div></section>';
   }
 
   function renderFooter(st, home){
