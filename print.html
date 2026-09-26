@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>pressio — طباعة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&family=Jost:wght@400;500&display=swap">
+<style id="pagecss">@page{margin:0}</style>
+<style id="doccss"></style>
+<style>
+html,body{margin:0;background:#E9E3DC;font-family:'IBM Plex Sans Arabic',sans-serif}
+.bar{position:sticky;top:0;display:flex;gap:10px;justify-content:center;padding:10px;background:#3F322B;z-index:2}
+.bar button{font:600 14px 'IBM Plex Sans Arabic',sans-serif;border:0;border-radius:10px;padding:10px 18px;background:#F8F3EC;color:#3F322B;cursor:pointer}
+.msg{max-width:420px;margin:60px auto;text-align:center;color:#3F322B}
+#docs .docpage{margin:16px auto;box-shadow:0 4px 18px rgba(0,0,0,.12)}
+@media print{html,body{background:#fff}.bar{display:none}#docs .docpage{margin:0;box-shadow:none;break-after:page;page-break-after:always}}
+@media screen and (max-width:900px){#docs{zoom:.45}}
+</style>
+</head>
+<body>
+<div class="bar"><button type="button" id="p">طباعة / حفظ PDF</button><button type="button" id="c">إغلاق</button></div>
+<div id="docs"></div>
+<script>
+(function(){
+  "use strict";
+  function fitFields(root) {
+    root.querySelectorAll(".df").forEach(el => {
+      let s = parseFloat(el.style.fontSize); const min = s * 0.55;
+      while (s > min && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) { s -= 0.25; el.style.fontSize = s + "pt"; }
+    });
+  }
+  
+  var d = null;
+  try { d = window.opener && window.opener.__pressioPrint; } catch (e) {}
+  document.getElementById("c").onclick = function(){ window.close(); };
+  document.getElementById("p").onclick = function(){ window.print(); };
+  if (!d) { document.getElementById("docs").innerHTML = '<p class="msg">افتح المستند من لوحة الإدارة عشان يطبع.</p>'; return; }
+  document.title = d.title || document.title;
+  document.getElementById("pagecss").textContent = "@page{size:" + d.page.w + "pt " + d.page.h + "pt;margin:0}";
+  document.getElementById("doccss").textContent = d.css;
+  document.getElementById("docs").innerHTML = d.html;
+  try { window.opener.__pressioPrint = null; } catch (e) {}
+  var fonts = document.fonts ? document.fonts.ready : Promise.resolve();
+  var imgs = [].slice.call(document.images).map(function(i){ return i.complete ? 0 : new Promise(function(r){ i.onload = i.onerror = r; }); });
+  Promise.all([fonts].concat(imgs)).then(function(){
+    fitFields(document); window.__ready = 1;
+    setTimeout(function(){ if (!(window.opener && window.opener.__noPrint)) window.print(); }, 300);
+  });
+})();
+</script>
+</body>
+</html>
