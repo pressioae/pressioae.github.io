@@ -14,7 +14,7 @@ const SERVICE = pickKey("SUPABASE_SECRET_KEY", "SUPABASE_SECRET_KEYS", "SUPABASE
 const ANON = pickKey("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY");
 const ORIGINS = ["https://pressio.ae", "https://www.pressio.ae", "https://pressioae.github.io"];
 const ROLES = ["staff", "accountant", "manager", "admin"];
-const PERMS = ["view_all", "site", "stock", "inv_upload", "inv_review", "reports", "backups"];
+const PERMS = ["view_all", "site", "stock", "inv_upload", "inv_review", "reports", "backups", "hr"];
 
 function cors(req: Request) {
   const o = req.headers.get("origin") || "";
