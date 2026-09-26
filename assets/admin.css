@@ -250,3 +250,7 @@ dialog form{display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
 .codebox .f{flex:1;min-width:160px}
 td .pill{margin:2px 0}
 td select[data-r]{min-width:150px}
+
+.pwbox{position:relative}
+.pwbox input{padding-inline-end:48px}
+.pwbox .btn.icon{position:absolute;inset-inline-end:4px;top:50%;transform:translateY(-50%);border:0;background:transparent}

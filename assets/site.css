@@ -254,3 +254,5 @@ body.is-maint > header,body.is-maint > main,body.is-maint > footer{display:none}
 
 .about__text{font-size:clamp(1.25rem,2.1vw,1.75rem);line-height:1.6;font-weight:400;color:var(--ink);text-wrap:pretty}
 html[lang="en"] .about__text{letter-spacing:-.01em}
+
+.brand,.maint .logo,.foot .logo{touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;user-select:none}

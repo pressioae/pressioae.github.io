@@ -79,8 +79,21 @@ function errText(e) {
 ------------------------------------------------------------------ */
 const api = {
   sess: null,
-  load() { try { this.sess = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { this.sess = null; } },
-  save() { try { this.sess ? localStorage.setItem(SESSION_KEY, JSON.stringify(this.sess)) : localStorage.removeItem(SESSION_KEY); } catch (e) {} },
+  remember: true,
+  // "remember me" keeps the session on this device; otherwise it ends when the browser closes.
+  // The password itself is never stored by the site (the browser's own password manager can save it).
+  load() {
+    try {
+      const l = localStorage.getItem(SESSION_KEY), s = sessionStorage.getItem(SESSION_KEY);
+      this.remember = !!l || !s; this.sess = JSON.parse(l || s || "null");
+    } catch (e) { this.sess = null; }
+  },
+  save() {
+    try {
+      localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY);
+      if (this.sess) (this.remember ? localStorage : sessionStorage).setItem(SESSION_KEY, JSON.stringify(this.sess));
+    } catch (e) {}
+  },
   keep(j) {
     this.sess = { access: j.access_token, refresh: j.refresh_token, exp: Date.now() + (j.expires_in || 3600) * 1000, uid: j.user && j.user.id, email: j.user && j.user.email };
     this.save();
@@ -363,22 +376,36 @@ function loginView(msg = "") {
   put($("#root"), html`<div class="login"><form class="login__box" id="lf" novalidate>
       <span class="logo" aria-label="pressio"></span>
       <h1>لوحة pressio</h1><p class="sub">للمالك والموظفين — ادخل بإيميلك</p>
-      <div class="f"><label for="em">الإيميل</label><input id="em" type="email" autocomplete="username" inputmode="email" dir="ltr" required></div>
-      <div class="f" style="margin-top:12px"><label for="pw">كلمة السر</label><input id="pw" type="password" autocomplete="current-password" dir="ltr" required></div>
+      <div class="f"><label for="em">الإيميل</label><input id="em" name="email" type="email" autocomplete="username" inputmode="email" dir="ltr" required></div>
+      <div class="f" style="margin-top:12px"><label for="pw">كلمة السر</label><div class="pwbox"><input id="pw" name="password" type="password" autocomplete="current-password" dir="ltr" required>
+        <button type="button" class="btn icon" id="pwv" aria-label="إظهار كلمة السر">${ico("eye")}</button></div></div>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="rm" checked> تذكّرني على هذا الجهاز</label>
       <p class="hint" id="lmsg" style="min-height:22px;margin-top:10px;color:var(--bad)">${msg}</p>
       <button class="btn primary wide" type="submit">دخول</button>
-      <p class="hint" style="margin-top:16px;text-align:center">كلمة السر تنفحص على السيرفر ولا تنحفظ في هذي الصفحة.</p>
+      <p class="hint" style="margin-top:16px;text-align:center">كلمة السر تنفحص على السيرفر، والموقع ما يحفظها — متصفحك يقدر يحفظها لك بأمان.</p>
     </form></div>`);
   $("#lf").onsubmit = async e => {
     e.preventDefault();
     const em = $("#em").value.trim(), pw = $("#pw").value;
     if (!em || !pw) { $("#lmsg").textContent = "اكتب الإيميل وكلمة السر"; return; }
-    await busy($("#lf button"), async () => {
-      try { await api.signIn(em, pw); await start(); }
+    await busy($('#lf button[type=submit]'), async () => {
+      try {
+        api.remember = $("#rm").checked;
+        await api.signIn(em, pw);
+        try { api.remember ? localStorage.setItem("pressio_last_email", em) : localStorage.removeItem("pressio_last_email"); } catch (x) {}
+        // ask the browser to save the password in its own secure password manager
+        if (api.remember && window.PasswordCredential && navigator.credentials) {
+          try { await navigator.credentials.store(new PasswordCredential({ id: em, password: pw, name: em })); } catch (x) {}
+        }
+        await start();
+      }
       catch (err) { $("#lmsg").textContent = errText(err); }
     });
   };
-  setTimeout(() => $("#em") && $("#em").focus(), 50);
+  let last = ""; try { last = localStorage.getItem("pressio_last_email") || ""; } catch (x) {}
+  if (last) $("#em").value = last;
+  $("#pwv").onclick = () => { const p = $("#pw"); p.type = p.type === "password" ? "text" : "password"; p.focus(); };
+  setTimeout(() => { const f = last ? $("#pw") : $("#em"); if (f) f.focus(); }, 50);
 }
 
 function pendingView() {

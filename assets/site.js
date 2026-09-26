@@ -168,12 +168,29 @@
       if(!shown || !S || S.updated_at !== d.updated_at) show(d);
     }).catch(function(){
       if(!shown) snapshot().then(show).catch(function(){
-        $("#app").innerHTML = '<div class="wrap empty">pressio — 050 344 4335 · @pressio.ae</div>';
+        $("#app").innerHTML = '<div class="wrap empty">pressio — 050 394 2292 · @pressio.ae</div>';
       });
     });
     // if the network is slow on a first visit, draw the saved copy after a moment
     setTimeout(function(){ if(!shown) snapshot().then(function(d){ if(!shown) show(d); }).catch(function(){}); }, 1500);
   }
+
+  /* ---------------- logo: tap = back to top; 5 quick taps = staff sign-in ---------------- */
+  var taps = 0, lastTap = 0;
+  document.addEventListener("click", function(e){
+    var lg = e.target.closest && e.target.closest(".brand, #maint .logo, .foot .logo");
+    if(!lg) return;
+    var now = Date.now();
+    taps = (now - lastTap <= 2000) ? taps + 1 : 1;
+    lastTap = now;
+    if(taps >= 5){ taps = 0; e.preventDefault(); location.href = "admin.html"; return; }
+    if(lg.classList.contains("brand")){
+      e.preventDefault();
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(x){}
+      window.scrollTo({top: 0, behavior: "smooth"});
+      var bu = $("#burger"); if(bu && bu.getAttribute("aria-expanded") === "true") bu.click();
+    }
+  });
 
   /* ---------------- render ---------------- */
   try{ if(/[?&]preview=1/.test(location.search)) sessionStorage.setItem("pressio_preview", "1"); }catch(e){}
