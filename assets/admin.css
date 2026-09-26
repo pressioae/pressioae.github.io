@@ -261,3 +261,9 @@ td select[data-r]{min-width:150px}
 tr.void td{opacity:.55}
 tr.void td:last-child,tr.void td:nth-last-child(2){opacity:1}
 h3.lbl{margin:10px 0 2px;font-size:14px}
+
+/* interface language switch */
+.langbtn{font:inherit;font-size:12.5px;border:1px solid rgba(217,202,188,.45);background:transparent;color:inherit;border-radius:999px;padding:3px 10px;cursor:pointer;margin-inline-start:6px}
+.mbar .langbtn{color:#F8F3EC}
+.side__me .langbtn{color:#D9CABC}
+.langbtn.float{position:fixed;top:16px;inset-inline-end:16px;color:var(--ink);border-color:var(--line);background:var(--paper);z-index:5}

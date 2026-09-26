@@ -9,6 +9,70 @@
 
 const C = window.PRESSIO;
 const SESSION_KEY = "pressio_admin_v2";
+const LANG_KEY = "pressio_admin_lang";
+
+/* ------------------------------------------------------------------
+   Interface language (Arabic / English). The panel is written in Arabic;
+   in English every piece of interface text is swapped on screen from the
+   dictionary in admin-en.js. Your own data (menu, names, invoices) is never touched.
+------------------------------------------------------------------ */
+const UI_LANG = (() => { try { return localStorage.getItem(LANG_KEY) === "en" && window.PRESSIO_EN ? "en" : "ar"; } catch (e) { return "ar"; } })();
+document.documentElement.lang = UI_LANG; document.documentElement.dir = UI_LANG === "en" ? "ltr" : "rtl";
+const I18 = (() => {
+  if (UI_LANG !== "en") return null;
+  const D = window.PRESSIO_EN, norm = x => x.replace(/\s+/g, " ").trim(), AR = /[\u0600-\u06FF]/;
+  const esc = x => x.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+  const pats = D.patterns.map(([ar, en]) => [new RegExp("^" + esc(ar).split("{}").join("(.+?)") + "$"), en]);
+  function one(k) {
+    if (D.exact[k] != null) return D.exact[k];
+    for (const [re, en] of pats) { const m = k.match(re); if (m) { let i = 1; return en.replace(/\{\}/g, () => part(m[i++] || "")); } }
+    return null;
+  }
+  function part(p) { const r = tr(p); return r == null ? p : r; }
+  function tr(t) {
+    const k = norm(t); if (!AR.test(k)) return null;
+    let r = one(k); if (r != null) return r;
+    const lead = k.match(/^[^\u0600-\u06FF]*/)[0], trail = k.slice(lead.length).match(/[^\u0600-\u06FF]*$/)[0];
+    const core = k.slice(lead.length, k.length - trail.length);
+    if (core !== k) { r = one(core); if (r != null) return lead + r + trail; }
+    for (const sep of [" — ", " · ", " | ", "، ", ": "]) if (k.includes(sep)) {
+      const ps = k.split(sep), out = ps.map(part);
+      if (out.some((x, i) => x !== ps[i])) return out.join(sep === "، " ? ", " : sep);
+    }
+    return null;
+  }
+  const ATTRS = ["placeholder", "title", "aria-label"];
+  function node(n) {
+    if (n.nodeType === 3) {
+      const pn = n.parentNode;
+      if (!AR.test(n.nodeValue) || (pn && (/^(SCRIPT|STYLE|TEXTAREA)$/.test(pn.nodeName) || (pn.closest && pn.closest("[data-notr]"))))) return;
+      const r = tr(n.nodeValue); if (r != null) { const m = n.nodeValue.match(/^\s*/)[0], e = n.nodeValue.match(/\s*$/)[0]; n.nodeValue = m + r + e; }
+      return;
+    }
+    if (n.nodeType !== 1 || n.closest && n.closest("[data-notr]")) return;
+    ATTRS.forEach(a => { const v = n.getAttribute && n.getAttribute(a); if (v && AR.test(v)) { const r = tr(v); if (r != null) n.setAttribute(a, r); } });
+    if (n.nodeName === "INPUT" && (n.type === "submit" || n.type === "button") && AR.test(n.value)) { const r = tr(n.value); if (r != null) n.value = r; }
+    n.childNodes.forEach(node);
+  }
+  return { tr, node };
+})();
+const L10 = s => (I18 && I18.tr(s)) || s;   // translate a single string (toasts, dialogs, titles)
+const langBtn = (cls = "") => `<button type="button" class="langbtn ${cls}" data-uilang data-notr>${UI_LANG === "en" ? "عربي" : "English"}</button>`;
+document.addEventListener("click", e => {
+  if (!e.target.closest("[data-uilang]")) return;
+  try { localStorage.setItem(LANG_KEY, UI_LANG === "en" ? "ar" : "en"); } catch (x) {}
+  location.reload();
+});
+if (I18) {
+  const go = () => {
+    I18.node(document.body);
+    new MutationObserver(ms => ms.forEach(m => m.type === "characterData" ? I18.node(m.target) : m.addedNodes.forEach(I18.node)))
+      .observe(document.body, { childList: true, subtree: true, characterData: true });
+    document.title = "pressio — Admin panel";
+  };
+  document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", go) : go();
+}
+
 
 /* ------------------------------------------------------------------
    Small helpers
@@ -24,8 +88,8 @@ const clone = o => JSON.parse(JSON.stringify(o ?? null));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: C.tz });
 const fmtMoney = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtDate = d => d ? new Date(d).toLocaleString("ar-AE", { timeZone: C.tz, dateStyle: "medium", timeStyle: "short" }) : "—";
-const fmtDay = d => d ? new Date(d + (String(d).length === 10 ? "T00:00:00" : "")).toLocaleDateString("ar-AE", { timeZone: C.tz, dateStyle: "medium" }) : "—";
+const fmtDate = d => d ? new Date(d).toLocaleString(UI_LANG === "en" ? "en-GB" : "ar-AE", { timeZone: C.tz, dateStyle: "medium", timeStyle: "short" }) : "—";
+const fmtDay = d => d ? new Date(d + (String(d).length === 10 ? "T00:00:00" : "")).toLocaleDateString(UI_LANG === "en" ? "en-GB" : "ar-AE", { timeZone: C.tz, dateStyle: "medium" }) : "—";
 const kb = b => b == null ? "" : b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
 const getPath = (o, p) => p.split(".").reduce((a, k) => a == null ? a : a[k], o);
 const setPath = (o, p, v) => { const k = p.split("."); let a = o; k.slice(0, -1).forEach((x, i) => { if (a[x] == null) a[x] = /^\d+$/.test(k[i + 1]) ? [] : {}; a = a[x]; }); a[k[k.length - 1]] = v; };
@@ -351,9 +415,9 @@ function shell() {
     <aside class="side"><span class="logo" aria-label="pressio"></span>
       <nav>${pages.map(p => html`<a href="#/${p.id}" data-p="${p.id}">${ico(p.i)}<span>${p.t}</span></a>`)}</nav>
       <div class="side__me"><b>${S.me.full_name}</b>${ROLE_AR[S.me.role]} · <span class="ltr">${S.me.email || api.sess.email || ""}</span><br>
-        <a href="index.html" target="_blank" style="color:#D9CABC;padding:0;display:inline">فتح الموقع ↗</a><br><button type="button" data-out>خروج</button></div>
+        <a href="index.html" target="_blank" style="color:#D9CABC;padding:0;display:inline">فتح الموقع ↗</a><br><button type="button" data-out>خروج</button> ${raw(langBtn())}</div>
     </aside>
-    <div class="mbar"><span class="logo"></span><span class="sp"></span><a href="index.html" target="_blank" style="color:#F8F3EC;font-size:12.5px">الموقع ↗</a><button type="button" data-out>خروج</button></div>
+    <div class="mbar"><span class="logo"></span><span class="sp"></span><a href="index.html" target="_blank" style="color:#F8F3EC;font-size:12.5px">الموقع ↗</a>${raw(langBtn())}<button type="button" data-out>خروج</button></div>
     <main class="main" id="page"></main>
     <nav class="tabs-m">${pages.map(p => html`<a href="#/${p.id}" data-p="${p.id}">${ico(p.i)}<span>${p.t}</span></a>`)}</nav>
   </div>`);
@@ -376,7 +440,7 @@ async function route() {
 }
 
 function loginView(msg = "") {
-  put($("#root"), html`<div class="login"><form class="login__box" id="lf" novalidate>
+  put($("#root"), html`<div class="login">${raw(langBtn("float"))}<form class="login__box" id="lf" novalidate>
       <span class="logo" aria-label="pressio"></span>
       <h1>لوحة pressio</h1><p class="sub">للمالك والموظفين — ادخل بإيميلك</p>
       <div class="f"><label for="em">الإيميل</label><input id="em" name="email" type="email" autocomplete="username" inputmode="email" dir="ltr" required></div>
@@ -960,7 +1024,7 @@ VIEWS.reports = async el => {
         <div class="f"><label>عدد الطلبات</label><input type="number" name="orders_count" min="0" class="num"></div></div>
       <h3 class="lbl" style="font-size:14px">المبيعات</h3>
       <div class="grid g3"><div class="f"><label>كاش</label><input type="number" name="cash" step="0.01" min="0" class="num" data-c></div>
-        ${fields.map(f => html`<div class="f"><label>${f.ar}</label>${f.kind === "bool" ? html`<select name="x_${f.key}" data-c><option value="">—</option><option value="1">نعم</option><option value="0">لا</option></select>`
+        ${fields.map(f => html`<div class="f"><label>${UI_LANG === "en" && f.en ? f.en : f.ar}</label>${f.kind === "bool" ? html`<select name="x_${f.key}" data-c><option value="">—</option><option value="1">نعم</option><option value="0">لا</option></select>`
           : html`<input type="${f.kind === "text" ? "text" : "number"}" name="x_${f.key}" step="0.01" min="0" class="${f.kind === "text" ? "" : "num"}" data-c>`}</div>`)}</div>
       <h3 class="lbl" style="font-size:14px">الدرج</h3>
       <div class="bi"><div class="f"><label>رصيد الافتتاح</label><input type="number" name="open_float" step="0.01" min="0" class="num" data-c></div>
@@ -1023,7 +1087,7 @@ VIEWS.reports = async el => {
       <div class="calc"><div><span>المبيعات</span><b class="num">${fmtMoney(c.sales)}</b></div><div><span>المتوقع في الدرج</span><b class="num">${fmtMoney(c.expected)}</b></div>
         <div><span>الموجود</span><b class="num">${r.drawer_count == null ? "—" : fmtMoney(r.drawer_count)}</b></div><div><span>الفرق</span><b class="num">${fmtMoney(c.variance)}</b><span class="pill ${c.verdict[1]}">${c.verdict[0]}</span></div></div>
       <div class="tbl-wrap"><table><tbody><tr><td>كاش</td><td class="num">${fmtMoney(r.cash)}</td></tr>
-        ${(S.settings.report_fields || []).filter(fd => r.extras && r.extras[fd.key] != null).map(fd => html`<tr><td>${fd.ar}</td><td class="num">${typeof r.extras[fd.key] === "number" ? fmtMoney(r.extras[fd.key]) : String(r.extras[fd.key])}</td></tr>`)}
+        ${(S.settings.report_fields || []).filter(fd => r.extras && r.extras[fd.key] != null).map(fd => html`<tr><td>${UI_LANG === "en" && fd.en ? fd.en : fd.ar}</td><td class="num">${typeof r.extras[fd.key] === "number" ? fmtMoney(r.extras[fd.key]) : String(r.extras[fd.key])}</td></tr>`)}
         <tr><td>رصيد الافتتاح</td><td class="num">${fmtMoney(r.open_float)}</td></tr><tr><td>عدد الطلبات</td><td class="num">${r.orders_count ?? "—"}</td></tr></tbody></table></div>
       ${(r.expenses || []).length ? html`<h3 class="lbl">المصاريف</h3><div class="tbl-wrap"><table><tbody>${r.expenses.map(x => html`<tr><td>${x.desc}</td><td class="num">${fmtMoney(x.amount)}</td><td>${x.cash ? "من الدرج" : ""}</td></tr>`)}</tbody></table></div>` : ""}
       ${(r.waste || []).length ? html`<h3 class="lbl">الهالك</h3><div class="tbl-wrap"><table><tbody>${r.waste.map(x => html`<tr><td>${x.item}</td><td class="num">${x.qty}</td><td>${x.reason || ""}</td></tr>`)}</tbody></table></div>` : ""}
@@ -1037,7 +1101,7 @@ VIEWS.reports = async el => {
     const by = {}; ps.forEach(p => { const k = p.month.slice(0, 7); by[k] = (by[k] || 0) + Number(p.total); });
     const card = document.createElement("div"); card.className = "card";
     put(card, html`<div class="row between"><h2>الرواتب المصروفة — آخر ٦ شهور</h2><a class="btn sm" href="#/hr">${ico("id")} الموظفين والرواتب</a></div>
-      ${Object.keys(by).length ? html`<div class="tbl-wrap"><table><tbody>${Object.keys(by).sort().reverse().map(k => html`<tr><td>${monthLabel(k, "ar")}</td><td class="num">${fmtMoney(by[k])}</td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما انصرفت رواتب من النظام بعد</p>`}`);
+      ${Object.keys(by).length ? html`<div class="tbl-wrap"><table><tbody>${Object.keys(by).sort().reverse().map(k => html`<tr><td>${monthLabel(k, UI_LANG)}</td><td class="num">${fmtMoney(by[k])}</td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما انصرفت رواتب من النظام بعد</p>`}`);
     el.appendChild(card);
   }
 };
@@ -1418,7 +1482,7 @@ async function viewEmployee(emp, el) {
         <tr><td><b>الإجمالي</b></td><td class="num"><b>${fmtMoney(gross(emp))}</b></td></tr></tbody></table>
         ${emp.notes ? html`<p class="hint" style="margin-top:8px">${emp.notes}</p>` : ""}</div></div>
     <h3 class="lbl" style="margin-top:14px">إيصالات الرواتب (${slips.length})</h3>
-    ${slips.length ? html`<div class="tbl-wrap"><table><tbody>${slips.map(p => html`<tr data-p="${p.id}" class="${p.status === "void" ? "void" : ""}"><td class="num">${p.receipt_no}</td><td>${monthLabel(p.month, "ar")}</td><td class="num">${fmtMoney(p.total)}</td>
+    ${slips.length ? html`<div class="tbl-wrap"><table><tbody>${slips.map(p => html`<tr data-p="${p.id}" class="${p.status === "void" ? "void" : ""}"><td class="num">${p.receipt_no}</td><td>${monthLabel(p.month, UI_LANG)}</td><td class="num">${fmtMoney(p.total)}</td>
       <td>${p.status === "void" ? html`<span class="pill bad" title="${p.void_reason || ""}">ملغي</span>` : ""}</td><td><button class="btn sm" data-pp>${ico("dl")} طباعة</button></td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما فيه إيصالات بعد</p>`}
     <h3 class="lbl" style="margin-top:14px">شهادات الراتب (${certs.length})</h3>
     ${certs.length ? html`<div class="tbl-wrap"><table><tbody>${certs.map(c => html`<tr data-c="${c.id}" class="${c.status === "void" ? "void" : ""}"><td class="num">${c.cert_no}</td><td>${fmtDay(c.cert_date)}</td><td class="wrap">${c.recipient_entity || c.recipient_name || "—"}</td><td>${c.lang === "ar" ? "عربي" : "English"}</td>
@@ -1491,7 +1555,7 @@ async function newPayslip(emp, el, preMonth) {
       <button type="button" class="btn icon" data-rm="${n}">×</button></div>`));
     sums();
   };
-  const sums = () => { const t = calc(); $("#ptot", d).textContent = fmtMoney(t); $("#pw", d).textContent = wordsAr(t);
+  const sums = () => { const t = calc(); $("#ptot", d).textContent = fmtMoney(t); $("#pw", d).textContent = UI_LANG === "en" ? wordsEn(t) : wordsAr(t);
     if (!st.beingTouched) f.being_for.value = autoBeing(); };
   const dupCheck = async () => { const r = await api.select("payslips", `select=receipt_no&employee_id=eq.${emp.id}&month=eq.${f.month.value}-01&status=eq.issued`).catch(() => []);
     const b = $("#dup", d); b.hidden = !r.length; b.textContent = r.length ? `تنبيه: فيه إيصال لنفس الشهر من قبل (${r.map(x => x.receipt_no).join("، ")}). تقدر تكمل لو هذا دفعة ثانية.` : ""; };
@@ -1548,7 +1612,7 @@ async function hrPayroll(body, el) {
   const hist = await api.select("payslips", `select=month,total,status&month=gte.${new Date(Date.UTC(y, m - 12, 1)).toISOString().slice(0, 10)}&status=eq.issued`).catch(() => []);
   const byMonth = {}; hist.forEach(r => { const k = r.month.slice(0, 7); byMonth[k] = (byMonth[k] || 0) + Number(r.total); });
   put(body, html`<div class="card"><div class="row" style="margin-bottom:12px">
-      <input type="month" id="pm" value="${hrMonth}" style="max-width:200px"><span class="hint">${monthLabel(hrMonth, "ar")}</span>
+      <input type="month" id="pm" value="${hrMonth}" style="max-width:200px"><span class="hint">${monthLabel(hrMonth, UI_LANG)}</span>
       <span class="sp"></span><span class="hint">${issued.length} إيصال · المجموع <b class="num">${fmtMoney(issued.reduce((a, r) => a + Number(r.total), 0))}</b></span>
       ${issued.length ? html`<button class="btn" id="pall">${ico("dl")} طباعة الكل</button><button class="btn" id="pcsv">${ico("dl")} Excel (CSV)</button>` : ""}</div>
     ${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>الإيصال</th><th>الموظف</th><th>الإضافات</th><th>الخصومات</th><th>الصافي</th><th>أصدره</th><th>الحالة</th><th></th></tr></thead>
@@ -1559,7 +1623,7 @@ async function hrPayroll(body, el) {
         <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-pa="print">${ico("dl")} طباعة</button>${r.status === "issued" ? html`<button class="btn sm danger" data-pa="void">إلغاء</button>` : ""}</div></td></tr>`; })}</tbody></table></div>`
       : html`<p class="empty">ما فيه إيصالات لهذا الشهر بعد</p>`}
     ${missing.length ? html`<div class="banner warn" style="margin-top:12px">ما انصرف لهم إيصال هذا الشهر: ${missing.map(e => html`<button class="btn sm" data-miss="${e.id}" style="margin:2px">${e.code} ${empName(e)}</button>`)}</div>` : ""}</div>
-    <div class="card"><h2>الرواتب آخر ١٢ شهر</h2>${Object.keys(byMonth).length ? html`<div class="tbl-wrap"><table><tbody>${Object.keys(byMonth).sort().reverse().map(k => html`<tr><td>${monthLabel(k, "ar")}</td><td class="num">${fmtMoney(byMonth[k])}</td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما فيه بيانات بعد</p>`}</div>`);
+    <div class="card"><h2>الرواتب آخر ١٢ شهر</h2>${Object.keys(byMonth).length ? html`<div class="tbl-wrap"><table><tbody>${Object.keys(byMonth).sort().reverse().map(k => html`<tr><td>${monthLabel(k, UI_LANG)}</td><td class="num">${fmtMoney(byMonth[k])}</td></tr>`)}</tbody></table></div>` : html`<p class="hint">ما فيه بيانات بعد</p>`}</div>`);
   $("#pm", body).onchange = e => { if (e.target.value) { hrMonth = e.target.value; VIEWS.hr(el); } };
   const pa = $("#pall", body); if (pa) pa.onclick = () => printPayslips(issued);
   const pc = $("#pcsv", body); if (pc) pc.onclick = () => {

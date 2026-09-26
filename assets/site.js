@@ -18,7 +18,7 @@
         visitK:"زورونا",visitT:"نشوفك في",hours:"الأوقات",addr:"الموقع",phone:"الهاتف",ig:"إنستغرام",
         map:"افتح الخريطة",soon:"قريباً",orderOn:"اطلب من",out:"غير متوفر",back:"يرجع",served:"يُقدّم",
         openNow:"مفتوح الحين",closedNow:"مسكّر الحين — نفتح",until:"لين",nores:"ما لقينا شي بهالاسم",
-        staff:"دخول الموظفين",rights:"جميع الحقوق محفوظة",skip:"تخطّى إلى المحتوى",preview:"معاينة — الموقع تحت الصيانة للزوار",
+        staff:"دخول الموظفين",zoom:"تكبير الصورة",close:"إغلاق",prev:"السابقة",next:"التالية",rights:"جميع الحقوق محفوظة",skip:"تخطّى إلى المحتوى",preview:"معاينة — الموقع تحت الصيانة للزوار",
         exitPreview:"خروج",cur:"د.إ",am:"ص",pm:"م",noon:"ظ",midnight:"منتصف الليل",daily:"يومياً",closed:"مسكّر",today:"اليوم",features:"الخدمات",rating:"على Google",reviews:"تقييم",
         days:["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"]},
     en:{menu:"Menu",about:"About",space:"The space",loyalty:"Loyalty",visit:"Visit",order:"Order delivery",
@@ -28,7 +28,7 @@
         visitK:"Visit",visitT:"See you in",hours:"Hours",addr:"Location",phone:"Phone",ig:"Instagram",
         map:"Open the map",soon:"Soon",orderOn:"Order on",out:"Sold out",back:"Back",served:"Served",
         openNow:"Open now",closedNow:"Closed — opens",until:"until",nores:"Nothing matches that",
-        staff:"Staff sign in",rights:"All rights reserved",skip:"Skip to content",preview:"Preview — visitors see the maintenance page",
+        staff:"Staff sign in",zoom:"View photo",close:"Close",prev:"Previous",next:"Next",rights:"All rights reserved",skip:"Skip to content",preview:"Preview — visitors see the maintenance page",
         exitPreview:"Exit",cur:"AED",am:"AM",pm:"PM",noon:"PM",midnight:"midnight",daily:"Daily",closed:"Closed",today:"Today",features:"Services",rating:"on Google",reviews:"reviews",
         days:["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]}
   };
@@ -192,6 +192,97 @@
     }
   });
 
+  /* ---------------- photo viewer: tap a photo to enlarge, swipe / arrows to move ---------------- */
+  var LB = null;
+  function lbSlides(el){
+    var g = el.getAttribute("data-lb"), slides = [], start = 0;
+    if(g === "menu"){
+      $$('#menu-list [data-lb="menu"]').forEach(function(n){
+        var it = (S.items || []).filter(function(x){ return x.id === n.getAttribute("data-id"); })[0]; if(!it) return;
+        if(n === el) start = slides.length;
+        (it.images || []).filter(src).forEach(function(id){
+          slides.push({u: src(id), cap: L(it, "name"), sub: (it.price ? numAr(Number(it.price) % 1 ? Number(it.price).toFixed(2) : String(it.price)) + " " + t("cur") : "")});
+        });
+      });
+    } else {
+      $$('[data-lb="' + g + '"]').forEach(function(n){
+        var im = n.querySelector("img"); if(!im) return;
+        if(n === el) start = slides.length;
+        slides.push({u: im.currentSrc || im.src, cap: n.getAttribute("data-cap") || "", sub: ""});
+      });
+    }
+    return {slides: slides, i: start};
+  }
+  function lbShow(){
+    var s = LB.slides[LB.i], el = LB.el;
+    el.classList.remove("is-zoom");
+    var im = el.querySelector(".lb__img"); im.classList.add("is-loading");
+    im.onload = function(){ im.classList.remove("is-loading"); };
+    im.src = s.u; im.alt = s.cap;
+    el.querySelector(".lb__cap b").textContent = s.cap;
+    el.querySelector(".lb__cap span").textContent = s.sub;
+    el.querySelector(".lb__n").textContent = LB.slides.length > 1 ? numAr((LB.i + 1) + " / " + LB.slides.length) : "";
+    el.classList.toggle("is-single", LB.slides.length < 2);
+    [LB.i + 1, LB.i - 1].forEach(function(k){ var x = LB.slides[(k + LB.slides.length) % LB.slides.length]; if(x){ var p = new Image(); p.src = x.u; } });
+  }
+  function lbGo(d){ if(!LB || LB.slides.length < 2) return; LB.i = (LB.i + d + LB.slides.length) % LB.slides.length; lbShow(); }
+  function lbClose(fromHistory){
+    if(!LB) return;
+    LB.el.remove(); document.documentElement.style.overflow = "";
+    var back = LB.focus; LB = null;
+    if(!fromHistory && history.state && history.state.lb) history.back();
+    if(back && back.focus) back.focus({preventScroll: true});
+  }
+  function lbOpen(el){
+    var d = lbSlides(el); if(!d.slides.length) return;
+    var rtl = lang === "ar";
+    var box = document.createElement("div");
+    box.className = "lb"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.dir = rtl ? "rtl" : "ltr";
+    box.innerHTML = '<div class="lb__stage"><img class="lb__img" alt=""></div>'
+      + '<button type="button" class="lb__btn lb__x" aria-label="' + esc(t("close")) + '">×</button>'
+      + '<button type="button" class="lb__btn lb__prev" aria-label="' + esc(t("prev")) + '">' + (rtl ? "›" : "‹") + '</button>'
+      + '<button type="button" class="lb__btn lb__next" aria-label="' + esc(t("next")) + '">' + (rtl ? "‹" : "›") + '</button>'
+      + '<div class="lb__cap"><b></b><span></span><i class="lb__n"></i></div>';
+    document.body.appendChild(box);
+    LB = {el: box, slides: d.slides, i: d.i, focus: el};
+    document.documentElement.style.overflow = "hidden";
+    try{ history.pushState({lb: 1}, ""); }catch(x){}
+    lbShow();
+    box.querySelector(".lb__x").onclick = function(){ lbClose(); };
+    box.querySelector(".lb__prev").onclick = function(){ lbGo(-1); };
+    box.querySelector(".lb__next").onclick = function(){ lbGo(1); };
+    box.addEventListener("click", function(e){ if(e.target === box || e.target.classList.contains("lb__stage")) lbClose(); });
+    var im = box.querySelector(".lb__img"), stage = box.querySelector(".lb__stage");
+    im.addEventListener("dblclick", function(){ box.classList.toggle("is-zoom"); });
+    // swipe (touch) + double-tap to zoom
+    var sx = 0, sy = 0, st = 0, lastTap = 0, multi = false;
+    stage.addEventListener("touchstart", function(e){ multi = e.touches.length > 1; var p = e.touches[0]; sx = p.clientX; sy = p.clientY; st = Date.now(); }, {passive: true});
+    stage.addEventListener("touchend", function(e){
+      if(multi || box.classList.contains("is-zoom")){
+        var now0 = Date.now(); if(!multi && now0 - lastTap < 300){ box.classList.remove("is-zoom"); lastTap = 0; } else lastTap = now0; return;
+      }
+      var p = e.changedTouches[0], dx = p.clientX - sx, dy = p.clientY - sy, now = Date.now();
+      if(Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.3 && now - st < 700){ lbGo((dx < 0) !== rtl ? 1 : -1); lastTap = 0; return; }
+      if(dy > 90 && Math.abs(dy) > Math.abs(dx) * 1.3){ lbClose(); return; }
+      if(Math.abs(dx) < 10 && Math.abs(dy) < 10){
+        if(now - lastTap < 300){ box.classList.toggle("is-zoom"); lastTap = 0; } else lastTap = now;
+      }
+    }, {passive: true});
+    box.querySelector(".lb__x").focus({preventScroll: true});
+  }
+  document.addEventListener("click", function(e){
+    var el = e.target.closest && e.target.closest("[data-lb]"); if(!el) return;
+    e.preventDefault(); lbOpen(el);
+  });
+  document.addEventListener("keydown", function(e){
+    if(!LB){ if((e.key === "Enter" || e.key === " ") && e.target.getAttribute && e.target.getAttribute("data-lb")){ e.preventDefault(); lbOpen(e.target); } return; }
+    var rtl = lang === "ar";
+    if(e.key === "Escape") lbClose();
+    else if(e.key === "ArrowRight") lbGo(rtl ? -1 : 1);
+    else if(e.key === "ArrowLeft") lbGo(rtl ? 1 : -1);
+  });
+  window.addEventListener("popstate", function(){ if(LB) lbClose(true); });
+
   /* ---------------- render ---------------- */
   try{ if(/[?&]preview=1/.test(location.search)) sessionStorage.setItem("pressio_preview", "1"); }catch(e){}
   function isPreview(){ try{ return sessionStorage.getItem("pressio_preview") === "1"; }catch(e){ return false; } }
@@ -323,7 +414,7 @@
       items.forEach(function(i){
         var a = available(i), pic = i.images && i.images[0] && src(i.images[0]);
         out += '<div class="mi' + (pic ? " has-img" : "") + (a.ok ? "" : " is-off") + '">'
-          + (pic ? '<div class="mi__img">' + img(i.images[0], L(i, "name")) + '</div>' : "")
+          + (pic ? '<div class="mi__img" data-lb="menu" data-id="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(t("zoom") + " — " + L(i, "name")) + '">' + img(i.images[0], L(i, "name")) + (i.images.filter(src).length > 1 ? '<span class="mi__more">' + numAr(i.images.filter(src).length) + '</span>' : "") + '</div>' : "")
           + '<div class="mi__name">' + esc(L(i, "name")) + (a.ok ? "" : '<span class="mi__note">' + esc(a.note) + '</span>') + '</div>'
           + money(i.price)
           + (L(i, "desc") ? '<p class="mi__desc">' + esc(L(i, "desc")) + '</p>' : "")
@@ -360,7 +451,7 @@
     var sp = home.space || []; if(!sp.length) return "";
     return '<section class="sec sec--paper" id="space"><div class="wrap reveal">' + head(t("spaceK"), t("spaceT"))
       + '<div class="space">' + sp.map(function(s){
-          return '<figure>' + img(s.img, L(s)) + '<figcaption>' + esc(L(s)) + '</figcaption></figure>'; }).join("")
+          return '<figure data-lb="space" data-cap="' + esc(L(s)) + '" role="button" tabindex="0">' + img(s.img, L(s)) + '<figcaption>' + esc(L(s)) + '</figcaption></figure>'; }).join("")
       + '</div></div></section>';
   }
 
@@ -368,7 +459,7 @@
     var g = (home.gallery || []).filter(function(x){ return src(x.img); }); if(!g.length) return "";
     return '<section class="sec"><div class="wrap reveal">' + head(t("galK"), t("galT"))
       + '<div class="gal">' + g.map(function(x){
-          return '<figure><div class="ph">' + img(x.img, L(x)) + '</div><figcaption>' + esc(L(x)) + '</figcaption></figure>'; }).join("")
+          return '<figure><div class="ph" data-lb="gal" data-cap="' + esc(L(x)) + '" role="button" tabindex="0">' + img(x.img, L(x)) + '</div><figcaption>' + esc(L(x)) + '</figcaption></figure>'; }).join("")
       + '</div></div></section>';
   }
 
