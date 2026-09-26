@@ -248,6 +248,7 @@
       var delta = (br.left + br.width / 2) - (sr.left + sr.width / 2);
       try{ strip.scrollBy({left: delta, behavior: smooth ? "smooth" : "auto"}); }catch(x){ strip.scrollLeft += delta; }
     });
+    if(LB.paintStrip) requestAnimationFrame(LB.paintStrip);
   }
   function lbText(){
     var s = lbCur(), el = LB.el, n = LB.groups[LB.g].slides.length;
@@ -326,7 +327,39 @@
     box.querySelector(".lb__x").onclick = function(){ lbClose(); };
     box.querySelector(".lb__prev").onclick = function(){ lbGo(-1); };
     box.querySelector(".lb__next").onclick = function(){ lbGo(1); };
-    box.querySelector(".lb__thumbs").addEventListener("click", function(e){ var b = e.target.closest(".lb__th"); if(b) lbJump(LB.g, +b.getAttribute("data-k")); });
+    var strip = box.querySelector(".lb__thumbs"), raf = 0, endT = 0, userScroll = false;
+    strip.addEventListener("click", function(e){ var b = e.target.closest(".lb__th"); if(b) lbJump(LB.g, +b.getAttribute("data-k")); });
+    // flick the strip: it glides, the photos grow as they reach the middle, and the one that stops in the middle opens
+    function nearest(){
+      var sr = strip.getBoundingClientRect(), mid = sr.left + sr.width / 2, best = null, bd = 1e9;
+      $$(".lb__th", strip).forEach(function(b){ var r = b.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - mid); if(d < bd){ bd = d; best = b; } });
+      return best;
+    }
+    LB.paintStrip = function(){
+      var sr = strip.getBoundingClientRect(), mid = sr.left + sr.width / 2;
+      $$(".lb__th", strip).forEach(function(b){
+        var r = b.getBoundingClientRect(), d = Math.min(1, Math.abs(r.left + r.width / 2 - mid) / (sr.width / 2));
+        b.style.transform = "translateY(" + (-8 * (1 - d) * (1 - d)) + "px) scale(" + (0.82 + 0.34 * (1 - d) * (1 - d)) + ")";
+        b.style.opacity = String(0.4 + 0.6 * (1 - d));
+      });
+    };
+    strip.addEventListener("scroll", function(){
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(LB.paintStrip);
+      clearTimeout(endT);
+      endT = setTimeout(function(){
+        if(!LB || !userScroll) return;
+        userScroll = false;
+        var b = nearest(); if(b && +b.getAttribute("data-k") !== LB.i) lbJump(LB.g, +b.getAttribute("data-k"));
+      }, 140);
+    }, {passive: true});
+    ["touchstart", "wheel", "mousedown"].forEach(function(ev){ strip.addEventListener(ev, function(){ userScroll = true; }, {passive: true}); });
+    // mouse: drag the strip on a computer too
+    var md = false, mx = 0, ms = 0, moved = false;
+    strip.addEventListener("mousedown", function(e){ md = true; moved = false; mx = e.clientX; ms = strip.scrollLeft; strip.classList.add("is-drag"); });
+    window.addEventListener("mousemove", function(e){ if(!md) return; if(Math.abs(e.clientX - mx) > 4) moved = true; strip.scrollLeft = ms - (e.clientX - mx); });
+    window.addEventListener("mouseup", function(){ if(!md) return; md = false; strip.classList.remove("is-drag");
+      if(moved){ var b = nearest(); if(b){ var r = b.getBoundingClientRect(), sr = strip.getBoundingClientRect(); strip.scrollBy({left: r.left + r.width / 2 - (sr.left + sr.width / 2), behavior: "smooth"}); } } });
+    strip.addEventListener("click", function(e){ if(moved){ e.stopImmediatePropagation(); moved = false; } }, true);
     box.querySelector(".lb__groups").addEventListener("click", function(e){ var b = e.target.closest(".lb__g"); if(b) lbJump(+b.getAttribute("data-g"), 0); });
     var im = box.querySelector(".lb__img"), stage = box.querySelector(".lb__stage");
     stage.addEventListener("click", function(e){ if(e.target === stage) lbClose(); });

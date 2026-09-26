@@ -264,12 +264,13 @@ html[lang="en"] .about__text{letter-spacing:-.01em}
 .lb{position:fixed;inset:0;z-index:200;background:rgba(24,17,14,.97);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:flex;flex-direction:column;animation:lbIn .18s ease-out;color:#F3EAE0}
 @keyframes lbIn{from{opacity:0}to{opacity:1}}
 .lb__top{display:flex;align-items:center;gap:8px;padding:10px 10px 0;padding-top:max(10px,env(safe-area-inset-top))}
-.lb__thumbs{flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;padding:12px 40% 10px;-webkit-overflow-scrolling:touch}
+.lb__thumbs{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;padding:14px calc(50% - 29px) 12px;-webkit-overflow-scrolling:touch;cursor:grab;-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
+.lb__thumbs.is-drag{cursor:grabbing;scroll-snap-type:none}
 .lb__thumbs::-webkit-scrollbar,.lb__groups::-webkit-scrollbar{display:none}
-.lb__th{flex:none;width:58px;height:58px;padding:0;border:2px solid transparent;border-radius:12px;overflow:hidden;background:#2e2420;cursor:pointer;scroll-snap-align:center;opacity:.55;transition:transform .25s cubic-bezier(.2,.8,.2,1),opacity .25s,border-color .25s}
+.lb__th{flex:none;width:58px;height:58px;padding:0;border:2px solid transparent;border-radius:12px;overflow:hidden;background:#2e2420;cursor:pointer;scroll-snap-align:center;scroll-snap-stop:normal;transition:border-color .25s,box-shadow .25s;will-change:transform}
+.lb__th img{pointer-events:none}
 .lb__th img{width:100%;height:100%;object-fit:cover;display:block}
-.lb__th:hover{opacity:.85}
-.lb__th.is-on{opacity:1;border-color:#F3EAE0;transform:translateY(-6px) scale(1.14);box-shadow:0 8px 18px rgba(0,0,0,.45)}
+.lb__th.is-on{border-color:#F3EAE0;box-shadow:0 8px 18px rgba(0,0,0,.45)}
 .lb__stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px 12px;overflow:hidden;touch-action:pan-y pinch-zoom}
 .lb__img{width:100%;height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none;cursor:zoom-in;will-change:transform}
 .lb.is-zoom .lb__stage{overflow:auto;display:block;touch-action:auto;padding:0}
@@ -290,4 +291,4 @@ html[lang="en"] .about__text{letter-spacing:-.01em}
 .lb__g{flex:none;scroll-snap-align:center;border:1px solid rgba(243,234,224,.28);background:transparent;color:#F3EAE0;border-radius:999px;padding:8px 16px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;transition:background .2s,color .2s}
 .lb__g.is-on{background:#F3EAE0;color:#241814;border-color:#F3EAE0}
 [hidden].lb__thumbs,[hidden].lb__groups{display:none}
-@media (max-width:640px){.lb__prev,.lb__next{display:none}.lb__stage{padding:6px 0}.lb__th{width:52px;height:52px}}
+@media (max-width:640px){.lb__prev,.lb__next{display:none}.lb__stage{padding:6px 0}.lb__th{width:52px;height:52px}.lb__thumbs{padding-inline:calc(50% - 26px)}}
