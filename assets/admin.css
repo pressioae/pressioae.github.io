@@ -239,3 +239,14 @@ dialog form{display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
 .wk__row input[type=time]{min-width:0}
 .wk__row .check{white-space:nowrap}
 @media (max-width:520px){.wk__row{grid-template-columns:70px minmax(0,1fr) auto minmax(0,1fr);}.wk__row .check{grid-column:2 / -1}}
+
+/* team: permissions & confirmation code */
+.perms{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.check.perm{align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px 12px;gap:10px}
+.check.perm span{display:flex;flex-direction:column;gap:2px}
+.check.perm small{color:var(--muted);font-size:12.5px;font-weight:400}
+.check.perm:has(input:checked){border-color:var(--ink);background:var(--paper)}
+.codebox{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:12px;border:1px dashed var(--line);border-radius:12px}
+.codebox .f{flex:1;min-width:160px}
+td .pill{margin:2px 0}
+td select[data-r]{min-width:150px}

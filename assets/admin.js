@@ -44,6 +44,7 @@ const I = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v6H4V5h6"/>', dl: '<path d="M12 4v11m0 0-4-4m4 4 4-4M4 20h16"/>',
   upl: '<path d="M12 20V9m0 0-4 4m4-4 4 4M4 4h16"/>', eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>', link: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>'
 };
 const ico = n => raw(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ""}</svg>`);
@@ -139,12 +140,29 @@ const api = {
 ------------------------------------------------------------------ */
 const S = { me: null, settings: null, cats: [], items: [], media: [], loaded: false };
 const role = () => S.me && S.me.active ? S.me.role : null;
-const isEditor = () => ["admin", "manager"].includes(role());
 const isAdmin = () => role() === "admin";
-const ROLE_AR = { admin: "المالك", manager: "مدير", staff: "موظف" };
+const can = p => isAdmin() || (!!role() && (S.me.perms || []).includes(p));
+const isEditor = () => can("site");
+const ROLE_AR = { admin: "المالك", manager: "مدير المشروع", accountant: "المحاسب", staff: "موظف" };
+const PERMS = [
+  ["view_all", "اطلاع على كل شي", "يشوف المنيو والفواتير والتقارير والسجل — بدون تعديل"],
+  ["inv_upload", "رفع الفواتير والتقرير اليومي", "يرفع فاتورة أو تقرير، ويشوف اللي رفعه هو"],
+  ["inv_review", "مراجعة الفواتير واعتمادها", "يشوف كل الفواتير ويقبلها أو يرفضها"],
+  ["reports", "كل التقارير اليومية", "يشوف تقارير كل الفريق"],
+  ["stock", "إخفاء صنف خلص", "يوقف صنف أو يخفيه لمدة ويرجع تلقائياً"],
+  ["site", "تعديل المنيو والصور والمحتوى", "أسعار، أصناف، صور، نصوص الموقع، وضع الصيانة"],
+  ["backups", "النسخ الاحتياطية", "يحفظ نسخة، يسترجع، ويتراجع عن تعديل"]
+];
+const PERM_AR = Object.fromEntries(PERMS.map(p => [p[0], p[1]]));
+const ROLE_PRESET = {
+  manager: ["view_all", "reports"],
+  accountant: ["inv_review", "reports", "inv_upload"],
+  staff: ["inv_upload", "stock"],
+  admin: []
+};
 
 async function loadMe() {
-  const rows = await api.select("staff", `select=id,full_name,role,active,email&id=eq.${api.sess.uid}`);
+  const rows = await api.select("staff", `select=id,full_name,role,active,email,perms&id=eq.${api.sess.uid}`);
   S.me = rows[0] || null;
 }
 async function loadSettings() {
@@ -298,16 +316,17 @@ const KIND_AR = { menu: "صور المنيو", venue: "صور المكان", bra
    Layout, routing, login
 ------------------------------------------------------------------ */
 const PAGES = [
-  { id: "home", t: "الرئيسية", i: "home", roles: ["admin", "manager", "staff"] },
-  { id: "menu", t: "المنيو", i: "menu", roles: ["admin", "manager"] },
-  { id: "media", t: "المكتبة", i: "media", roles: ["admin", "manager"] },
-  { id: "content", t: "محتوى الموقع", i: "content", roles: ["admin", "manager"] },
-  { id: "invoices", t: "الفواتير", i: "inv", roles: ["admin", "manager", "staff"] },
-  { id: "reports", t: "التقرير اليومي", i: "rep", roles: ["admin", "manager", "staff"] },
-  { id: "backups", t: "النسخ والسجل", i: "backup", roles: ["admin", "manager"] },
-  { id: "team", t: "الفريق", i: "team", roles: ["admin"] }
+  { id: "home", t: "الرئيسية", i: "home", ok: () => true },
+  { id: "menu", t: "المنيو", i: "menu", ok: () => can("site") || can("stock") || can("view_all") },
+  { id: "media", t: "المكتبة", i: "media", ok: () => can("site") },
+  { id: "content", t: "محتوى الموقع", i: "content", ok: () => can("site") },
+  { id: "invoices", t: "الفواتير", i: "inv", ok: () => can("inv_upload") || can("inv_review") || can("view_all") },
+  { id: "reports", t: "التقرير اليومي", i: "rep", ok: () => can("inv_upload") || can("reports") || can("view_all") },
+  { id: "backups", t: "النسخ والسجل", i: "backup", ok: () => can("site") || can("backups") || can("view_all") },
+  { id: "team", t: "الفريق", i: "team", ok: () => isAdmin() }
 ];
-const allowed = () => PAGES.filter(p => p.roles.includes(role()));
+const allowed = () => PAGES.filter(p => p.ok());
+const seesMenu = () => can("site") || can("stock") || can("view_all");
 const current = () => { const id = (location.hash.replace(/^#\/?/, "") || "home").split("?")[0]; return allowed().find(p => p.id === id) || allowed()[0]; };
 
 function shell() {
@@ -332,7 +351,7 @@ async function route() {
   const el = $("#page"), my = ++navToken;
   put(el, html`<div class="empty">لحظة…</div>`);
   try {
-    if (["menu", "media", "content", "backups", "home"].includes(p.id) && isEditor() && !S.loaded) { await Promise.all([loadContent(), loadSettings()]); S.loaded = true; }
+    if (["menu", "media", "content", "backups", "home"].includes(p.id) && seesMenu() && !S.loaded) { await Promise.all([loadContent(), loadSettings()]); S.loaded = true; }
     if (!S.settings) await loadSettings();
     if (my !== navToken) return;
     await VIEWS[p.id](el);
@@ -390,19 +409,25 @@ const head = (t, sub, actions = "") => html`<div class="pagehead"><div><h1>${t}<
 /* ---------- dashboard ---------- */
 VIEWS.home = async el => {
   const name = (S.me.full_name || "").split(" ")[0];
-  if (!isEditor()) {
-    put(el, html`${head("أهلاً " + name, "اختر وش تبي تسوي")}
-      <div class="grid g2">
-        <a class="card" href="#/invoices" style="text-decoration:none;color:inherit"><h2>${ico("inv")} ارفع فاتورة</h2><p class="hint">صوّر الفاتورة أو ارفع PDF — توصل للمالك فوراً.</p></a>
-        <a class="card" href="#/reports" style="text-decoration:none;color:inherit"><h2>${ico("rep")} التقرير اليومي</h2><p class="hint">سجّل مبيعات اليوم وعدّة الدرج قبل ما تسكّر.</p></a>
-      </div>`);
+  if (!can("site") && !can("view_all")) {
+    const pend = can("inv_review") ? await api.select("invoices", "select=id&status=eq.pending") : null;
+    const card = (href, i, t, sub) => html`<a class="card" href="${href}" style="text-decoration:none;color:inherit"><h2>${ico(i)} ${t}</h2><p class="hint">${sub}</p></a>`;
+    const cards = [
+      can("inv_review") ? card("#/invoices", "inv", `مراجعة الفواتير (${pend ? pend.length : 0})`, "الفواتير اللي بانتظار القبول أو الرفض.") : "",
+      can("inv_upload") ? card("#/invoices", "upl", "ارفع فاتورة", "صوّر الفاتورة أو ارفع PDF — توصل للمراجعة فوراً.") : "",
+      can("inv_upload") ? card("#/reports", "rep", "التقرير اليومي", "سجّل مبيعات اليوم وعدّة الدرج قبل ما تسكّر.") : "",
+      can("reports") && !can("inv_upload") ? card("#/reports", "rep", "التقارير اليومية", "تقارير كل الفريق.") : "",
+      can("stock") ? card("#/menu", "clock", "صنف خلص؟", "أوقفه أو أخفه لمدة — يرجع للمنيو تلقائياً.") : ""
+    ].filter(Boolean);
+    put(el, html`${head("أهلاً " + name, ROLE_AR[S.me.role] + " · اختر وش تبي تسوي")}
+      <div class="grid g2">${cards.length ? cards : html`<p class="empty">ما عندك صلاحيات بعد — كلّم المالك.</p>`}</div>`);
     return;
   }
   const st = S.settings, m = st.maint || {};
   const off = S.items.filter(i => !i.available || (i.snooze_until && new Date(i.snooze_until) > new Date())).length;
   const [snaps, pend] = await Promise.all([
     api.select("snapshots", "select=created_at,kind&order=created_at.desc&limit=1"),
-    isAdmin() ? api.select("invoices", "select=id&status=eq.pending") : Promise.resolve(null)
+    can("inv_review") || can("view_all") ? api.select("invoices", "select=id&status=eq.pending") : Promise.resolve(null)
   ]);
   const checks = [];
   (st.home?.delivery || []).forEach(d => { if (!d.url) checks.push(`رابط ${d.ar || d.en} فاضي — الزوار يشوفون «قريباً»`); });
@@ -414,21 +439,21 @@ VIEWS.home = async el => {
       <div class="row">
         <span class="pill ${m.on ? "warn" : "ok"}">${m.on ? "صيانة" : "شغّال"}</span>
         <a class="btn sm" href="index.html?preview=1" target="_blank">${ico("eye")} معاينة</a>
-        <button class="btn sm ${m.on ? "ok" : "danger"}" id="mt">${m.on ? "افتح الموقع للزوار" : "شغّل وضع الصيانة"}</button>
+        ${can("site") ? html`<button class="btn sm ${m.on ? "ok" : "danger"}" id="mt">${m.on ? "افتح الموقع للزوار" : "شغّل وضع الصيانة"}</button>` : ""}
       </div></div></div>
     <div class="grid g4" style="margin-top:16px">
       <div class="stat"><b>${S.items.length}</b><span>صنف في المنيو</span></div>
       <div class="stat"><b>${off}</b><span>غير متوفر أو مخفي مؤقتاً</span></div>
       <div class="stat"><b>${S.media.filter(x => x.kind !== "docs").length}</b><span>صورة وفيديو</span></div>
-      ${isAdmin() ? html`<a class="stat" href="#/invoices" style="text-decoration:none;color:inherit"><b>${pend ? pend.length : 0}</b><span>فاتورة بانتظار المراجعة</span></a>`
+      ${can("inv_review") || can("view_all") ? html`<a class="stat" href="#/invoices" style="text-decoration:none;color:inherit"><b>${pend ? pend.length : 0}</b><span>فاتورة بانتظار المراجعة</span></a>`
                   : html`<div class="stat"><b>${S.cats.length}</b><span>قسم</span></div>`}
     </div>
     <div class="card" style="margin-top:16px"><div class="row between"><div><h2>النسخ الاحتياطية</h2>
       <p class="hint">آخر نسخة: ${snaps[0] ? fmtDate(snaps[0].created_at) : "ما فيه بعد"} · تنحفظ نسخة تلقائية كل يوم على السيرفر، وكل تعديل مسجّل في السجل.</p></div>
       <a class="btn sm" href="#/backups">${ico("backup")} فتح</a></div></div>
-    ${checks.length ? html`<div class="card"><h2>قبل ما تفتح الموقع</h2><ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">${checks.map(c => html`<li>${c}</li>`)}</ul>
+    ${checks.length && can("site") ? html`<div class="card"><h2>قبل ما تفتح الموقع</h2><ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">${checks.map(c => html`<li>${c}</li>`)}</ul>
       <a class="btn sm" href="#/content" style="margin-top:10px">${ico("edit")} عدّل المحتوى</a></div>` : ""}`);
-  $("#mt").onclick = async e => {
+  if ($("#mt")) $("#mt").onclick = async e => {
     const turnOn = !m.on;
     if (!(await confirmBox(turnOn ? "تشغيل وضع الصيانة" : "فتح الموقع للزوار",
       turnOn ? "الزوار بيشوفون شاشة الصيانة بدل الموقع. تبي تكمل؟" : "الموقع بيصير مفتوح لكل الزوار خلال ثواني. متأكد إن كل شي جاهز؟", { danger: turnOn }))) return;
@@ -448,25 +473,28 @@ VIEWS.menu = async el => {
   const cat = S.cats.find(c => c.id === selCat);
   const items = S.items.filter(i => i.category_id === selCat).sort((a, b) => a.sort - b.sort);
   const snoozed = i => i.snooze_until && new Date(i.snooze_until) > new Date();
-  put(el, html`${head("المنيو", "التعديلات تظهر للزوار خلال ثواني — وكل تغيير ينحفظ في السجل وتقدر تتراجع عنه",
-      html`<button class="btn" id="add-cat">${ico("plus")} قسم جديد</button><button class="btn primary" id="add-it" ${cat ? "" : "disabled"}>${ico("plus")} صنف جديد</button>`)}
+  const ed = can("site"), st = can("stock") || ed;
+  put(el, html`${head("المنيو", ed ? "التعديلات تظهر للزوار خلال ثواني — وكل تغيير ينحفظ في السجل وتقدر تتراجع عنه"
+      : st ? "صنف خلص؟ طفّي «متوفر» أو اضغط ⏱ عشان تخفيه لمدة ويرجع تلقائياً" : "عرض فقط",
+      ed ? html`<button class="btn" id="add-cat">${ico("plus")} قسم جديد</button><button class="btn primary" id="add-it" ${cat ? "" : "disabled"}>${ico("plus")} صنف جديد</button>` : "")}
     <div class="menu-ed">
       <div class="card" style="padding:10px"><div class="cats">${S.cats.map(c => html`<div class="cat ${c.id === selCat ? "on" : ""} ${c.visible ? "" : "hid"}" data-c="${c.id}">
           <b>${c.name_ar || c.name_en}</b><small class="num">${S.items.filter(i => i.category_id === c.id).length}</small></div>`)}</div></div>
       <div class="card">${cat ? html`
         <div class="row between" style="margin-bottom:10px"><div><h2>${cat.name_ar} <span class="muted" style="font-weight:400">· ${cat.name_en}</span></h2>
           <p class="hint">${cat.hours_from != null ? `يُقدّم من ${cat.hours_from}:00 إلى ${cat.hours_to}:00 · ` : ""}${cat.visible ? "ظاهر للزوار" : "مخفي عن الزوار"}</p></div>
-          <div class="row"><button class="btn icon" data-cm="up" title="تحريك لفوق">${ico("up")}</button><button class="btn icon" data-cm="down" title="تحريك لتحت">${ico("down")}</button>
-          <button class="btn sm" data-cm="edit">${ico("edit")} تعديل القسم</button></div></div>
+          ${ed ? html`<div class="row"><button class="btn icon" data-cm="up" title="تحريك لفوق">${ico("up")}</button><button class="btn icon" data-cm="down" title="تحريك لتحت">${ico("down")}</button>
+          <button class="btn sm" data-cm="edit">${ico("edit")} تعديل القسم</button></div>` : ""}</div>
         <div class="items">${items.length ? items.map((i, n) => html`<div class="it ${i.available && !snoozed(i) ? "" : "off"}" data-i="${i.id}">
             <div class="it__img">${thumb(i.images && i.images[0], i.name_ar)}</div>
             <div class="it__t"><b>${i.name_ar || i.name_en}${i.featured ? " ★" : ""}${i.hidden ? " · مخفي" : ""}</b>
               <span>${i.name_en}${snoozed(i) ? " · يرجع " + fmtDate(i.snooze_until) : !i.available ? " · غير متوفر" : ""}</span></div>
-            <input class="price-in num" type="number" min="0" step="0.5" value="${i.price}" data-price aria-label="السعر">
-            <div class="it__acts"><label class="switch" title="متوفر"><input type="checkbox" data-av ${i.available ? "checked" : ""}></label>
-              <button class="btn icon" data-im="up" ${n ? "" : "disabled"}>${ico("up")}</button>
+            <input class="price-in num" type="number" min="0" step="0.5" value="${i.price}" data-price aria-label="السعر" ${ed ? "" : "disabled"}>
+            <div class="it__acts"><label class="switch" title="متوفر"><input type="checkbox" data-av ${i.available ? "checked" : ""} ${st ? "" : "disabled"}></label>
+              ${st ? html`<button class="btn icon" data-snz title="إخفاء لمدة">${ico("clock")}</button>` : ""}
+              ${ed ? html`<button class="btn icon" data-im="up" ${n ? "" : "disabled"}>${ico("up")}</button>
               <button class="btn icon" data-im="down" ${n < items.length - 1 ? "" : "disabled"}>${ico("down")}</button>
-              <button class="btn icon" data-im="edit" title="تعديل">${ico("edit")}</button></div>
+              <button class="btn icon" data-im="edit" title="تعديل">${ico("edit")}</button>` : ""}</div>
           </div>`) : html`<p class="empty">ما فيه أصناف في هذا القسم بعد</p>`}</div>` : html`<p class="empty">أضف أول قسم</p>`}
       </div>
     </div>`);
@@ -480,6 +508,8 @@ VIEWS.menu = async el => {
       return busy(cm, async () => { await reorder("categories", sorted, sorted.findIndex(x => x.id === cat.id), cm.dataset.cm === "up" ? -1 : 1); VIEWS.menu(el); });
     }
     const row = e.target.closest("[data-i]"); const im = e.target.closest("[data-im]");
+    const sz = e.target.closest("[data-snz]");
+    if (row && sz) return snoozeItem(S.items.find(x => x.id === row.dataset.i), el);
     if (row && im) {
       const it = S.items.find(x => x.id === row.dataset.i);
       if (im.dataset.im === "edit") return editItem(it, el);
@@ -490,7 +520,7 @@ VIEWS.menu = async el => {
     const row = e.target.closest("[data-i]"); if (!row) return;
     const it = S.items.find(x => x.id === row.dataset.i);
     if (e.target.matches("[data-av]")) {
-      await busy(null, async () => { Object.assign(it, await api.update("items", `id=eq.${enc(it.id)}`, { available: e.target.checked, snooze_until: null })); toast(e.target.checked ? "صار متوفر" : "صار غير متوفر", "ok"); });
+      await busy(null, async () => { Object.assign(it, await api.rpc("set_item_stock", { p_id: it.id, p_available: e.target.checked, p_until: null })); toast(e.target.checked ? "صار متوفر" : "صار غير متوفر", "ok"); });
       VIEWS.menu(el);
     }
     if (e.target.matches("[data-price]")) {
@@ -498,7 +528,7 @@ VIEWS.menu = async el => {
       await busy(null, async () => { Object.assign(it, await api.update("items", `id=eq.${enc(it.id)}`, { price: v })); toast("انحفظ السعر", "ok"); });
     }
   };
-  $("#add-cat").onclick = () => editCat(null, el);
+  const ac = $("#add-cat"); if (ac) ac.onclick = () => editCat(null, el);
   const ai = $("#add-it"); if (ai) ai.onclick = () => editItem(null, el);
 };
 const enc = encodeURIComponent;
@@ -537,6 +567,29 @@ function editCat(cat, el) {
     if (!(await confirmBox("حذف القسم", `تحذف «${cat.name_ar}»؟ تقدر ترجعه من السجل.`))) return;
     await busy(null, async () => { await api.remove("categories", `id=eq.${enc(cat.id)}`); S.cats = S.cats.filter(x => x.id !== cat.id); selCat = null; toast("انحذف", "ok"); VIEWS.menu(el); });
   };
+}
+
+function snoozeUntil(v) {
+  if (!v) return null;
+  const t = new Date();
+  if (v === "eod") { const dd = new Date(new Date().toLocaleString("en-US", { timeZone: C.tz })); t.setTime(t.getTime() + ((24 - dd.getHours()) * 60 - dd.getMinutes()) * 60000); }
+  else if (v === "tmr") { const dd = new Date(new Date().toLocaleString("en-US", { timeZone: C.tz })); t.setTime(t.getTime() + ((24 - dd.getHours() + 7) * 60 - dd.getMinutes()) * 60000); }
+  else t.setTime(t.getTime() + Number(v) * 3600000);
+  return t.toISOString();
+}
+function snoozeItem(it, el) {
+  const on = it.snooze_until && new Date(it.snooze_until) > new Date();
+  modal("إخفاء «" + (it.name_ar || it.name_en) + "» لمدة", html`
+    ${on ? html`<p class="banner warn">مخفي حالياً لين ${fmtDate(it.snooze_until)}</p>` : ""}
+    <p class="hint">الصنف يختفي من المنيو للزوار، ويرجع لحاله بعد المدة — ما يحتاج أحد يرجعه.</p>
+    <div class="f"><label>المدة</label><select name="d">
+      <option value="2">ساعتين</option><option value="4">٤ ساعات</option><option value="eod" selected>لين آخر اليوم</option>
+      <option value="tmr">لين بكرة ٧ الصبح</option><option value="24">٢٤ ساعة</option><option value="48">يومين</option><option value="168">أسبوع</option>
+      ${on ? html`<option value="">رجّعه الحين</option>` : ""}</select></div>`,
+    { submit: "تطبيق", onSubmit: async f => {
+        const until = snoozeUntil(f.d.value);
+        Object.assign(it, await api.rpc("set_item_stock", { p_id: it.id, p_available: true, p_until: until }));
+        toast(until ? "انخفى لين " + fmtDate(until) : "رجع للمنيو", "ok"); VIEWS.menu(el); return true; } });
 }
 
 function editItem(item, el) {
@@ -812,8 +865,9 @@ VIEWS.invoices = async el => {
   if (invF.q) qs += `&supplier=ilike.*${enc(invF.q)}*`;
   const rows = await api.select("invoices", qs);
   const sum = rows.reduce((a, r) => a + Number(r.total || 0), 0);
-  put(el, html`${head("الفواتير", isAdmin() ? "كل فواتير الفريق — راجع واقبل أو ارفض" : "الفواتير اللي رفعتها — بعد الإرسال ما تنعدّل")}
-    <details class="card" ${rows.length ? "" : "open"} id="newinv"><summary style="cursor:pointer;font-weight:600">${ico("plus")} فاتورة جديدة</summary>
+  const all = can("inv_review") || can("view_all"), rev = can("inv_review"), up = can("inv_upload");
+  put(el, html`${head("الفواتير", rev ? "كل فواتير الفريق — راجع واقبل أو ارفض" : all ? "كل فواتير الفريق — عرض فقط" : "الفواتير اللي رفعتها — بعد الإرسال ما تنعدّل")}
+    ${up ? html`<details class="card" ${rows.length ? "" : "open"} id="newinv"><summary style="cursor:pointer;font-weight:600">${ico("plus")} فاتورة جديدة</summary>
       <form id="invf" class="grid" style="margin-top:14px" novalidate>
         <div class="f"><label>صورة الفاتورة أو PDF *</label><input type="file" name="file" accept="image/*,application/pdf" capture="environment" required></div>
         <div class="bi"><div class="f"><label>المورّد</label><input type="text" name="supplier" list="sup"></div>
@@ -824,28 +878,33 @@ VIEWS.invoices = async el => {
           <div class="f"><label>ملاحظات</label><input type="text" name="notes"></div></div>
         <datalist id="sup">${Array.from(new Set(rows.map(r => r.supplier).filter(Boolean))).map(s => html`<option value="${s}">`)}</datalist>
         <div class="row end"><button class="btn primary" type="submit">${ico("upl")} إرسال الفاتورة</button></div>
-      </form></details>
+      </form></details>` : ""}
     <div class="card"><div class="row" style="margin-bottom:12px">
       <select id="fs" style="max-width:180px"><option value="">كل الحالات</option>${Object.entries(ST_AR).map(([k, v]) => html`<option value="${k}" ${invF.status === k ? "selected" : ""}>${v[0]}</option>`)}</select>
       <input type="date" id="ff" value="${invF.from}" style="max-width:170px" title="من"><input type="date" id="ft" value="${invF.to}" style="max-width:170px" title="إلى">
       <input type="search" id="fq" value="${invF.q}" placeholder="المورّد…" style="max-width:180px"><button class="btn sm" id="fgo">تطبيق</button>
       <span class="sp"></span><span class="hint">${rows.length} فاتورة · المجموع <b class="num">${fmtMoney(sum)}</b></span></div>
-      ${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>المورّد</th><th>الرقم</th><th>التصنيف</th><th>المبلغ</th>${isAdmin() ? html`<th>رفعها</th>` : ""}<th>الحالة</th><th></th></tr></thead>
+      ${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>المورّد</th><th>الرقم</th><th>التصنيف</th><th>المبلغ</th>${all ? html`<th>رفعها</th>` : ""}<th>الحالة</th><th></th></tr></thead>
         <tbody>${rows.map(r => html`<tr data-r="${r.id}"><td>${fmtDay(r.invoice_date || r.created_at.slice(0, 10))}</td><td class="wrap">${r.supplier || "—"}${r.notes ? html`<br><span class="hint">${r.notes}</span>` : ""}</td>
           <td class="num">${r.invoice_no || "—"}</td><td>${INV_CAT_AR[r.category] || "—"}</td><td class="num">${fmtMoney(r.total)}</td>
-          ${isAdmin() ? html`<td>${r.created_by_name || "—"}</td>` : ""}<td><span class="pill ${ST_AR[r.status][1]}">${ST_AR[r.status][0]}</span></td>
+          ${all ? html`<td>${r.created_by_name || "—"}</td>` : ""}<td><span class="pill ${ST_AR[r.status][1]}" title="${r.reviewed_by_name ? "بواسطة " + r.reviewed_by_name + " · " + fmtDate(r.reviewed_at) : ""}">${ST_AR[r.status][0]}</span>${r.reviewed_by_name ? html`<br><span class="hint">${r.reviewed_by_name}</span>` : ""}</td>
           <td><div class="row" style="flex-wrap:nowrap">${r.file_path ? html`<button class="btn sm" data-open="${r.file_path}">${ico("eye")} الملف</button>` : ""}
-            ${isAdmin() && r.status !== "approved" ? html`<button class="btn sm ok" data-st="approved">قبول</button>` : ""}
-            ${isAdmin() && r.status !== "rejected" ? html`<button class="btn sm danger" data-st="rejected">رفض</button>` : ""}</div></td></tr>`)}</tbody></table></div>`
+            ${rev && r.status !== "approved" ? html`<button class="btn sm ok" data-st="approved">قبول</button>` : ""}
+            ${rev && r.status !== "rejected" ? html`<button class="btn sm danger" data-st="rejected">رفض</button>` : ""}</div></td></tr>`)}</tbody></table></div>`
         : html`<p class="empty">ما فيه فواتير${invF.status || invF.from || invF.to || invF.q ? " بهذي الفلاتر" : " بعد"}</p>`}</div>`);
 
   $("#fgo").onclick = () => { invF = { status: $("#fs").value, from: $("#ff").value, to: $("#ft").value, q: $("#fq").value.trim() }; VIEWS.invoices(el); };
   el.onclick = async e => {
     const o = e.target.closest("[data-open]"); if (o) return openDoc(o.dataset.open, o);
     const st = e.target.closest("[data-st]");
-    if (st) { const id = st.closest("[data-r]").dataset.r; await busy(st, async () => { await api.update("invoices", `id=eq.${id}`, { status: st.dataset.st }); toast("انحفظ", "ok"); VIEWS.invoices(el); }); }
+    if (st) {
+      const id = st.closest("[data-r]").dataset.r, ok = st.dataset.st === "approved";
+      if (ok) return busy(st, async () => { await api.rpc("review_invoice", { p_id: id, p_status: "approved" }); toast("انقبلت", "ok"); VIEWS.invoices(el); });
+      modal("رفض الفاتورة", html`<div class="f"><label>السبب (يوصل للي رفعها)</label><input type="text" name="n" placeholder="مثلاً: الصورة مب واضحة"></div>`,
+        { submit: "رفض", onSubmit: async f => { await api.rpc("review_invoice", { p_id: id, p_status: "rejected", p_note: f.n.value.trim() ? "سبب الرفض: " + f.n.value.trim() : null }); toast("انرفضت", "ok"); VIEWS.invoices(el); return true; } });
+    }
   };
-  $("#invf").onsubmit = async e => {
+  if ($("#invf")) $("#invf").onsubmit = async e => {
     e.preventDefault(); const f = e.target;
     const file = f.file.files[0]; if (!file) return toast("أرفق صورة الفاتورة أو PDF", "bad");
     await busy($('button[type=submit]', f), async () => {
@@ -863,8 +922,9 @@ VIEWS.reports = async el => {
   const fields = (S.settings.report_fields || []).filter(f => f.active !== false);
   const rows = await api.select("reports", "select=*&order=report_date.desc,created_at.desc&limit=120");
   const state = { expenses: [], waste: [] };
-  put(el, html`${head("التقرير اليومي", isEditor() ? "تقارير الفريق — والفورم لتقرير اليوم" : "اكتبه قبل ما تسكّر — بعد الإرسال ما ينعدّل")}
-    <details class="card" id="newrep" ${rows.some(r => r.report_date === today() && r.created_by === api.sess.uid) ? "" : "open"}><summary style="cursor:pointer;font-weight:600">${ico("plus")} تقرير جديد</summary>
+  const up = can("inv_upload"), all = can("reports") || can("view_all");
+  put(el, html`${head("التقرير اليومي", all ? (up ? "تقارير الفريق — والفورم لتقرير اليوم" : "تقارير الفريق") : "اكتبه قبل ما تسكّر — بعد الإرسال ما ينعدّل")}
+    ${up ? html`<details class="card" id="newrep" ${rows.some(r => r.report_date === today() && r.created_by === api.sess.uid) ? "" : "open"}><summary style="cursor:pointer;font-weight:600">${ico("plus")} تقرير جديد</summary>
     <form id="rf" class="grid" style="margin-top:14px" novalidate>
       <div class="bi"><div class="f"><label>اليوم</label><input type="date" name="report_date" value="${today()}" required></div>
         <div class="f"><label>عدد الطلبات</label><input type="number" name="orders_count" min="0" class="num"></div></div>
@@ -881,13 +941,14 @@ VIEWS.reports = async el => {
       <div class="bi"><div class="f"><label>ملاحظات</label><textarea name="notes"></textarea></div>
         <div class="f"><label>صورة ورقة التقرير (اختياري)</label><input type="file" name="file" accept="image/*,application/pdf" capture="environment"></div></div>
       <div class="row end"><button class="btn primary" type="submit">إرسال التقرير</button></div>
-    </form></details>
+    </form></details>` : ""}
     <div class="card"><h2 style="margin-bottom:12px">التقارير</h2>${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>بطاقة</th><th>توصيل</th><th>فرق الدرج</th><th>كتبه</th><th></th></tr></thead>
       <tbody>${rows.map(r => { const c = repCalc(r, fields); return html`<tr data-rp="${r.id}"><td>${fmtDay(r.report_date)}</td><td class="num"><b>${fmtMoney(c.sales)}</b></td><td class="num">${fmtMoney(r.cash)}</td><td class="num">${fmtMoney(c.card)}</td><td class="num">${fmtMoney(c.delivery)}</td>
         <td>${r.drawer_count == null ? "—" : html`<span class="pill ${c.verdict[1]}"><span class="num">${fmtMoney(c.variance)}</span></span>`}</td><td>${r.created_by_name || "—"}</td>
         <td><button class="btn sm" data-view>${ico("eye")} تفاصيل</button></td></tr>`; })}</tbody></table></div>` : html`<p class="empty">ما فيه تقارير بعد</p>`}</div>`);
 
   const f = $("#rf");
+  if (f) {
   const rowsUi = () => {
     put($("#exp"), state.expenses.map((x, n) => html`<div class="r"><input type="text" placeholder="البند" value="${x.desc}" data-e="expenses.${n}.desc"><input type="number" step="0.01" placeholder="المبلغ" value="${x.amount}" class="num" data-e="expenses.${n}.amount">
       <label class="check"><input type="checkbox" data-e="expenses.${n}.cash" ${x.cash ? "checked" : ""}> من الدرج</label><button type="button" class="btn icon" data-rm="expenses.${n}">×</button></div>`));
@@ -924,6 +985,7 @@ VIEWS.reports = async el => {
       await api.insert("reports", row); toast("انرسل التقرير", "ok"); VIEWS.reports(el);
     });
   };
+  }
   el.onclick = e => {
     const v = e.target.closest("[data-view]"); if (!v) return;
     const r = rows.find(x => x.id === v.closest("[data-rp]").dataset.rp), c = repCalc(r, fields);
@@ -965,23 +1027,23 @@ VIEWS.backups = async el => {
   const label = h => { const d = h.new_data || h.old_data || {}; return d.name_ar || d.name_en || d.full_name || d.alt_ar || d.supplier || (d.report_date ? "يوم " + d.report_date : "") || d.note || (h.table_name === "settings" ? "" : h.row_id); };
   put(el, html`${head("النسخ الاحتياطية والسجل", "نسخة تلقائية كل يوم على السيرفر (تنحفظ ٦٠ يوم)، وتقدر تحفظ نسخة يدوية قبل أي تعديل كبير. تحتاج بس متصفح — ما يحتاج جهازك.")}
     <div class="card"><div class="row">
-      <button class="btn primary" id="snap">${ico("backup")} احفظ نسخة الآن</button>
+      ${can("backups") || can("site") ? html`<button class="btn primary" id="snap">${ico("backup")} احفظ نسخة الآن</button>` : html`<span class="hint">عرض فقط</span>`}
       ${isAdmin() ? html`<label class="btn">${ico("upl")} استيراد نسخة من ملف<input type="file" id="imp" accept="application/json,.json" hidden></label>
         <button class="btn" id="expall">${ico("dl")} تصدير كل البيانات</button>` : ""}
       <span class="sp"></span><span class="hint">المنيو والمحتوى والصور محفوظة. الفواتير والتقارير ما تنمسح أصلاً — محد يقدر يحذفها من الموقع.</span></div></div>
     <div class="card"><h2 style="margin-bottom:12px">النسخ المحفوظة (${snaps.length})</h2>${snaps.length ? html`<div class="tbl-wrap"><table><thead><tr><th>#</th><th>التاريخ</th><th>الوصف</th><th>النوع</th><th>الحجم</th><th>بواسطة</th><th></th></tr></thead>
       <tbody>${snaps.map(s => html`<tr data-sn="${s.id}"><td class="num">${s.id}</td><td>${fmtDate(s.created_at)}</td><td class="wrap">${s.label}</td><td><span class="pill ${KIND_SNAP[s.kind][1]}">${KIND_SNAP[s.kind][0]}</span></td>
         <td class="num">${kb(s.bytes)}</td><td>${s.created_by_name || "النظام"}</td><td><div class="row" style="flex-wrap:nowrap">
-        <button class="btn sm" data-sa="dl">${ico("dl")} تنزيل</button>${isAdmin() ? html`<button class="btn sm" data-sa="restore">${ico("undo")} استرجاع</button><button class="btn icon" data-sa="del" title="حذف">${ico("trash")}</button>` : ""}</div></td></tr>`)}</tbody></table></div>`
+        <button class="btn sm" data-sa="dl">${ico("dl")} تنزيل</button>${isAdmin() || can("backups") ? html`<button class="btn sm" data-sa="restore">${ico("undo")} استرجاع</button>` : ""}${isAdmin() ? html`<button class="btn icon" data-sa="del" title="حذف">${ico("trash")}</button>` : ""}</div></td></tr>`)}</tbody></table></div>`
       : html`<p class="empty">ما فيه نسخ بعد</p>`}</div>
     <div class="card"><h2 style="margin-bottom:4px">سجل التعديلات</h2><p class="hint">كل تعديل على المنيو والمحتوى والصور مسجّل هنا باسم اللي سوّاه. «تراجع» يرجّع العنصر لحالته قبل التعديل.</p>
       ${hist.length ? html`<div class="tbl-wrap"><table><thead><tr><th>الوقت</th><th>بواسطة</th><th>العملية</th><th>العنصر</th><th></th></tr></thead>
       <tbody>${hist.map(h => html`<tr data-h="${h.id}"><td>${fmtDate(h.changed_at)}</td><td>${h.changed_by_name || "النظام"}</td><td><span class="pill ${(ACT[h.action] || ["", ""])[1]}">${(ACT[h.action] || [h.action])[0]}</span></td>
         <td class="wrap">${TBL[h.table_name] || h.table_name}${label(h) ? " · " + label(h) : ""}</td>
-        <td>${["items", "categories", "settings", "media"].includes(h.table_name) && h.action !== "RESTORE" ? html`<button class="btn sm" data-undo>${ico("undo")} تراجع</button>` : ""}</td></tr>`)}</tbody></table></div>`
+        <td>${(can("site") || can("backups")) && ["items", "categories", "settings", "media"].includes(h.table_name) && h.action !== "RESTORE" ? html`<button class="btn sm" data-undo>${ico("undo")} تراجع</button>` : ""}</td></tr>`)}</tbody></table></div>`
       : html`<p class="empty">ما فيه تعديلات بعد</p>`}</div>`);
 
-  $("#snap").onclick = e => modal("حفظ نسخة", html`<div class="f"><label>وصف قصير (اختياري)</label><input type="text" name="l" placeholder="مثلاً: قبل تحديث أسعار الشتاء"></div>`,
+  if ($("#snap")) $("#snap").onclick = e => modal("حفظ نسخة", html`<div class="f"><label>وصف قصير (اختياري)</label><input type="text" name="l" placeholder="مثلاً: قبل تحديث أسعار الشتاء"></div>`,
     { submit: "حفظ", onSubmit: async f => { await api.rpc("save_snapshot", { p_label: f.l.value.trim() || "نسخة يدوية" }); toast("انحفظت النسخة", "ok"); VIEWS.backups(el); return true; } });
   const imp = $("#imp");
   if (imp) imp.onchange = async e => {
@@ -1024,29 +1086,87 @@ VIEWS.backups = async el => {
 };
 
 /* ---------- team ---------- */
+const ROLE_OPTS = [["staff", "موظف"], ["accountant", "المحاسب"], ["manager", "مدير المشروع"], ["admin", "مالك — كل شي"]];
+const permBoxes = (sel, name = "pm") => html`<div class="perms">${PERMS.map(([k, t, d]) => html`<label class="check perm"><input type="checkbox" name="${name}" value="${k}" ${sel.includes(k) ? "checked" : ""}>
+  <span><b>${t}</b><small>${d}</small></span></label>`)}</div>`;
+const permList = (r) => r.role === "admin" ? html`<span class="pill ok">كل شي</span>` : (r.perms || []).length
+  ? html`${(r.perms || []).map(k => html`<span class="pill">${PERM_AR[k] || k}</span> `)}` : html`<span class="hint">بدون صلاحيات</span>`;
+
+async function staffAdmin(body) {
+  const r = await fetch(`${C.url}/functions/v1/staff-admin`, { method: "POST",
+    headers: { apikey: C.key, Authorization: `Bearer ${await api.token()}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || (r.status === 404 ? "خدمة إضافة المستخدمين مب مفعّلة بعد على السيرفر" : "تعذّر التنفيذ"));
+  return j;
+}
+const codeField = () => html`<div class="codebox"><div class="f"><label>كلمة سرك أنت (للتأكيد)</label>
+  <input type="password" name="confirm" autocomplete="current-password" dir="ltr"></div>
+  <p class="hint" style="flex-basis:100%;margin:0">للأمان: أي إضافة أو تغيير كلمة سر يحتاج كلمة سر المالك. ما تنحفظ في أي مكان.</p></div>`;
+const genPass = () => { const c = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const a = new Uint32Array(12); crypto.getRandomValues(a); return Array.from(a, x => c[x % c.length]).join(""); };
+
 VIEWS.team = async el => {
   const rows = await api.select("staff", "select=*&order=created_at.asc");
-  const dash = `https://supabase.com/dashboard/project/${C.url.replace(/^https:\/\//, "").split(".")[0]}/auth/users`;
-  put(el, html`${head("الفريق", "الأدوار والصلاحيات")}
-    <div class="banner warn" style="margin-bottom:16px">لإضافة موظف: افتح إدارة الحسابات في Supabase ← Add user ← Create new user (إيميل وكلمة سر، وفعّل Auto Confirm). الحساب الجديد يظهر هنا <b>موقوف</b> — فعّله وحدد دوره.
-      <a class="btn sm" href="${dash}" target="_blank" rel="noopener">${ico("ext")} إدارة الحسابات</a></div>
-    <div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الإيميل</th><th>الدور</th><th>مفعّل</th><th></th></tr></thead>
-    <tbody>${rows.map(r => { const me = r.id === S.me.id; return html`<tr data-u="${r.id}"><td><input type="text" value="${r.full_name}" data-n style="min-width:160px"></td><td class="ltr">${r.email || "—"}</td>
-      <td><select data-r ${me ? "disabled" : ""}>${[["staff", "موظف — فواتير وتقارير"], ["manager", "مدير — + المنيو والمحتوى"], ["admin", "مالك — كل شي"]].map(([v, t]) => html`<option value="${v}" ${r.role === v ? "selected" : ""}>${t}</option>`)}</select></td>
+  put(el, html`${head("الفريق", "أضف الأشخاص وحدد وش يقدر يسوي كل واحد", html`<button class="btn primary" id="add-u">${ico("plus")} إضافة شخص</button>`)}
+    <div class="tbl-wrap card" style="padding:0"><table><thead><tr><th>الاسم</th><th>الإيميل</th><th>الدور</th><th>الصلاحيات</th><th>مفعّل</th><th></th></tr></thead>
+    <tbody>${rows.map(r => { const me = r.id === S.me.id; return html`<tr data-u="${r.id}"><td><input type="text" value="${r.full_name}" data-n style="min-width:150px"></td><td class="ltr">${r.email || "—"}</td>
+      <td><select data-r ${me ? "disabled" : ""}>${ROLE_OPTS.map(([v, t]) => html`<option value="${v}" ${r.role === v ? "selected" : ""}>${t}</option>`)}</select></td>
+      <td class="wrap" data-pl>${permList(r)} ${r.role !== "admin" ? html`<button class="btn sm" data-perm>${ico("edit")} تعديل</button>` : ""}</td>
       <td><label class="switch"><input type="checkbox" data-a ${r.active ? "checked" : ""} ${me ? "disabled" : ""}></label></td>
-      <td><button class="btn sm" data-save>حفظ</button></td></tr>`; })}</tbody></table></div>
-    <div class="card" style="margin-top:16px"><h2>الصلاحيات</h2><ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">
-      <li><b>موظف:</b> يرفع فواتير ويكتب التقرير اليومي، ويشوف اللي رفعه هو بس. ما يقدر يعدّل أو يحذف بعد الإرسال.</li>
-      <li><b>مدير:</b> + يعدّل المنيو والصور والمحتوى، ويشوف كل التقارير، ويحفظ نسخ ويتراجع عن التعديلات.</li>
-      <li><b>مالك:</b> كل شي + يقبل ويرفض الفواتير، يسترجع النسخ، ويدير الفريق.</li></ul></div>`);
+      <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-save>حفظ</button>${me ? "" : html`<button class="btn icon" data-pw title="كلمة سر جديدة">${ico("key")}</button>`}</div></td></tr>`; })}</tbody></table></div>
+    <div class="card" style="margin-top:16px"><h2>الأدوار الجاهزة</h2><ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">
+      <li><b>مدير المشروع:</b> يطّلع على كل شي (المنيو، الفواتير، التقارير، السجل) بدون تعديل.</li>
+      <li><b>المحاسب:</b> يشوف كل الفواتير ويعتمدها أو يرفضها، ويشوف التقارير اليومية.</li>
+      <li><b>موظف:</b> يرفع الفواتير والتقرير اليومي، ويخفي الصنف اللي خلص لمدة ويرجع تلقائياً.</li>
+      <li><b>المالك:</b> كل شي + إدارة الفريق.</li></ul>
+      <p class="hint" style="margin-top:8px">الدور يعبّي الصلاحيات تلقائياً، وتقدر تزيد أو تنقص لكل شخص من «تعديل». الإيقاف يمنع الدخول فوراً، وكل شي رفعه الشخص يبقى محفوظ.</p></div>`);
+  const state = Object.fromEntries(rows.map(r => [r.id, { role: r.role, perms: (r.perms || []).slice() }]));
+  const paint = tr => { const st = state[tr.dataset.u]; put($("[data-pl]", tr), html`${permList(st)} ${st.role !== "admin" ? html`<button class="btn sm" data-perm>${ico("edit")} تعديل</button>` : ""}`); $("[data-save]", tr).classList.add("primary"); };
+
+  el.onchange = e => {
+    const tr = e.target.closest("[data-u]"); if (!tr) return;
+    if (e.target.matches("[data-r]")) { const st = state[tr.dataset.u]; st.role = e.target.value; st.perms = (ROLE_PRESET[st.role] || []).slice(); paint(tr); }
+    else $("[data-save]", tr).classList.add("primary");
+  };
   el.onclick = async e => {
+    if (e.target.closest("#add-u")) return addUser(el);
+    const tr = e.target.closest("[data-u]"); if (!tr) return;
+    const st = state[tr.dataset.u], r = rows.find(x => x.id === tr.dataset.u);
+    if (e.target.closest("[data-perm]")) {
+      return modal("صلاحيات " + r.full_name, permBoxes(st.perms), { submit: "تم", onSubmit: async f => {
+        st.perms = $$("input[name=pm]:checked", f).map(x => x.value); paint(tr); toast("اضغط «حفظ» في الصف عشان تنحفظ", ""); return true; } });
+    }
+    if (e.target.closest("[data-pw]")) {
+      const d = modal("كلمة سر جديدة — " + r.full_name, html`<div class="f"><label>كلمة السر الجديدة</label><div class="row" style="flex-wrap:nowrap">
+          <input type="text" name="pw" dir="ltr" value="${genPass()}" minlength="8" autocomplete="off"></div><p class="hint">انسخها وأرسلها له — يقدر يدخل فيها على طول.</p></div>${codeField()}`,
+        { submit: "تغيير", onSubmit: async f => { await staffAdmin({ action: "password", user_id: r.id, password: f.pw.value, confirm: f.confirm.value }); toast("تغيّرت كلمة السر", "ok"); return true; } });
+      return;
+    }
     const b = e.target.closest("[data-save]"); if (!b) return;
-    const tr = b.closest("[data-u]");
     const patch = { full_name: $("[data-n]", tr).value.trim() };
-    if (tr.dataset.u !== S.me.id) { patch.role = $("[data-r]", tr).value; patch.active = $("[data-a]", tr).checked; }
-    await busy(b, async () => { await api.update("staff", `id=eq.${tr.dataset.u}`, patch); toast("انحفظ", "ok"); if (tr.dataset.u === S.me.id) { await loadMe(); } });
+    if (tr.dataset.u !== S.me.id) { patch.role = st.role; patch.perms = st.role === "admin" ? [] : st.perms; patch.active = $("[data-a]", tr).checked; }
+    await busy(b, async () => { await api.update("staff", `id=eq.${tr.dataset.u}`, patch); b.classList.remove("primary"); toast("انحفظ", "ok"); if (tr.dataset.u === S.me.id) await loadMe(); });
   };
 };
+
+function addUser(el) {
+  const d = modal("إضافة شخص للفريق", html`
+    <div class="bi"><div class="f"><label>الاسم</label><input type="text" name="full_name" required></div>
+      <div class="f"><label>الإيميل (يدخل فيه)</label><input type="email" name="email" dir="ltr" required></div></div>
+    <div class="bi"><div class="f"><label>كلمة السر (انسخها وأرسلها له)</label><input type="text" name="password" dir="ltr" value="${genPass()}" autocomplete="off"></div>
+      <div class="f"><label>الدور</label><select name="role">${ROLE_OPTS.map(([v, t]) => html`<option value="${v}" ${v === "staff" ? "selected" : ""}>${t}</option>`)}</select></div></div>
+    <div class="f" id="pmw"><span class="lbl">الصلاحيات</span>${permBoxes(ROLE_PRESET.staff)}</div>
+    ${codeField()}`,
+    { wide: true, submit: "إضافة", onSubmit: async f => {
+      const body = { action: "create", full_name: f.full_name.value.trim(), email: f.email.value.trim(), password: f.password.value, role: f.role.value,
+        perms: $$("input[name=pm]:checked", f).map(x => x.value), confirm: f.confirm.value };
+      if (!body.email) { toast("اكتب الإيميل", "bad"); return false; }
+      if (!body.confirm) { toast("اكتب كلمة سرك للتأكيد", "bad"); return false; }
+      await staffAdmin(body);
+      toast("انضاف " + (body.full_name || body.email) + " — أرسل له الإيميل وكلمة السر", "ok");
+      VIEWS.team(el); return true; } });
+  const f = $("form", d);
+  f.role.onchange = () => { put($("#pmw", d), html`<span class="lbl">الصلاحيات</span>${f.role.value === "admin" ? html`<p class="hint">المالك يقدر يسوي كل شي.</p>` : permBoxes(ROLE_PRESET[f.role.value] || [])}`); };
+}
 
 start();
 })();
