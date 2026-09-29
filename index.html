@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="image" href="images/hero-800.webp" imagesrcset="images/hero-800.webp 800w, images/hero.webp 1300w" imagesizes="(max-width: 860px) 100vw, 46vw" fetchpriority="high">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Jost:wght@400;500&display=swap">
-<link rel="stylesheet" href="assets/site.css?v=7">
+<link rel="stylesheet" href="assets/site.css?v=8">
 
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"CafeOrCoffeeShop","name":"pressio","url":"https://pressio.ae/",
@@ -42,15 +42,17 @@
 <header class="top" id="top">
   <div class="wrap top__in">
     <a class="brand" href="#" aria-label="pressio"><span class="logo" aria-hidden="true"></span></a>
-    <nav class="nav" aria-label="القائمة الرئيسية" id="nav"></nav>
+    <nav class="nav" aria-label="القائمة الرئيسية" id="nav" hidden></nav>
     <div class="top__end">
       <button class="lang" id="lang" type="button" aria-label="English">EN</button>
       <a class="btn btn--sm btn--ink top__cta" href="#delivery" data-i18n="order">اطلب توصيل</a>
-      <button class="burger" id="burger" type="button" aria-expanded="false" aria-controls="drawer" aria-label="القائمة"><span></span><span></span></button>
+      <button class="burger" id="burger" hidden type="button" aria-expanded="false" aria-controls="drawer" aria-label="القائمة"><span></span><span></span></button>
     </div>
   </div>
   <div class="drawer" id="drawer" hidden></div>
 </header>
+
+<nav class="secbar" id="secbar" aria-label="أقسام الصفحة"><div class="secbar__in chips" id="secchips"></div></nav>
 
 <main id="main">
   <!-- Hero is static HTML so the first paint never waits for data -->
@@ -85,6 +87,6 @@
 </noscript>
 
 <script src="assets/config.js?v=2"></script>
-<script src="assets/site.js?v=7" defer></script>
+<script src="assets/site.js?v=8" defer></script>
 </body>
 </html>
