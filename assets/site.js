@@ -11,7 +11,7 @@
   var LANG_KEY = "pressio_lang";
 
   var T = {
-    ar:{menu:"المنيو",about:"عن pressio",space:"المكان",loyalty:"الولاء",visit:"زورونا",order:"اطلب توصيل",
+    ar:{home:"الرئيسية",delivery:"التوصيل",stampsOf:"من",menu:"المنيو",about:"عن pressio",space:"المكان",loyalty:"الولاء",visit:"زورونا",order:"اطلب توصيل",
         seeMenu:"شوف المنيو",search:"دوّر في المنيو…",all:"الكل",signature:"المفضّلة عندنا",signatureK:"اختياراتنا",
         menuK:"المنيو",menuT:"كل شي نحضّره",aboutK:"عن pressio",spaceK:"المكان",spaceT:"مساحة تريّحك",
         galK:"من البار",galT:"لقطات من يومنا",loyK:"برنامج الولاء",dlvK:"التوصيل",dlvT:"اطلبنا لين عندك",
@@ -21,7 +21,7 @@
         staff:"دخول الموظفين",zoom:"تكبير الصورة",close:"إغلاق",prev:"السابقة",next:"التالية",rights:"جميع الحقوق محفوظة",skip:"تخطّى إلى المحتوى",preview:"معاينة — الموقع تحت الصيانة للزوار",
         exitPreview:"خروج",cur:"د.إ",am:"ص",pm:"م",noon:"ظ",midnight:"منتصف الليل",daily:"يومياً",closed:"مسكّر",today:"اليوم",features:"الخدمات",rating:"على Google",reviews:"تقييم",
         days:["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"]},
-    en:{menu:"Menu",about:"About",space:"The space",loyalty:"Loyalty",visit:"Visit",order:"Order delivery",
+    en:{home:"Home",delivery:"Delivery",stampsOf:"of",menu:"Menu",about:"About",space:"The space",loyalty:"Loyalty",visit:"Visit",order:"Order delivery",
         seeMenu:"See the menu",search:"Search the menu…",all:"All",signature:"House favourites",signatureK:"Our picks",
         menuK:"Menu",menuT:"Everything we make",aboutK:"About pressio",spaceK:"The space",spaceT:"A room that works",
         galK:"From the bar",galT:"Moments from our day",loyK:"Loyalty",dlvK:"Delivery",dlvT:"Have it brought to you",
@@ -430,7 +430,6 @@
     var mEl = $("#maint"); if(mEl) mEl.remove();
     renderPreviewBar(maint.on);
 
-    renderNav();
     renderHero(st, home);
     var html = "";
     html += secAbout(home);
@@ -443,19 +442,62 @@
     html += secVisit(home);
     $("#app").innerHTML = html;
     renderFooter(st, home);
+    renderNav();
     bindMenu();
     paintMenu();
     reveal();
     if(location.hash && !render.jumped){ render.jumped = true; var el = document.getElementById(location.hash.slice(1)); if(el) el.scrollIntoView(); }
   }
 
-  var NAV = [["menu","menu"],["about","about"],["space","space"],["loyalty","loyalty"],["visit","visit"]];
+  /* ---------------- section bar ----------------
+     A floating row of chips (like the menu's) that follows you down the page.
+     Inside the menu it slides away so the menu's own category bar takes its place,
+     and comes back once you scroll past the menu. */
+  var NAV = [["top","home"],["about","about"],["menu","menu"],["space","space"],["loyalty","loyalty"],["delivery","delivery"],["visit","visit"]];
+  var navOn = "";
   function renderNav(){
-    var links = NAV.map(function(n){ return '<a href="#' + n[0] + '">' + esc(t(n[1])) + '</a>'; }).join("");
-    $("#nav").innerHTML = links;
-    $("#nav").setAttribute("aria-label", lang === "ar" ? "القائمة الرئيسية" : "Main");
-    $("#drawer").innerHTML = links + '<a class="btn btn--ink" href="#delivery">' + esc(t("order")) + '</a>';
+    var have = NAV.filter(function(n){ return n[0] === "top" || document.getElementById(n[0]); });
+    var box = $("#secchips");
+    box.innerHTML = have.map(function(n){
+      return '<a class="chip" href="#' + (n[0] === "top" ? "" : n[0]) + '" data-sec="' + n[0] + '">' + esc(t(n[1])) + '</a>';
+    }).join("");
+    $("#secbar").setAttribute("aria-label", lang === "ar" ? "أقسام الصفحة" : "Page sections");
+    $("#nav").innerHTML = ""; $("#drawer").innerHTML = "";
+    navOn = ""; navSpy(true);
   }
+  function navMark(id, smooth){
+    if(id === navOn) return; navOn = id;
+    var box = $("#secchips"), on = null;
+    $$(".chip", box).forEach(function(c){ var m = c.getAttribute("data-sec") === id; c.classList.toggle("is-on", m); if(m){ on = c; c.setAttribute("aria-current", "true"); } else c.removeAttribute("aria-current"); });
+    if(!on) return;
+    var r = on.getBoundingClientRect(), br = box.getBoundingClientRect();
+    var delta = r.left + r.width / 2 - (br.left + br.width / 2);
+    if(Math.abs(delta) > 2){ try{ box.scrollBy({left: delta, behavior: smooth ? "smooth" : "auto"}); }catch(x){ box.scrollLeft += delta; } }
+  }
+  function navSpy(now){
+    var bar = $("#secbar"); if(!bar || !S) return;
+    var topH = $("#top").offsetHeight, bh = bar.offsetHeight || 56, line = topH + bh + 24;
+    // inside the menu? (its own bar has reached the top) → hide ours
+    var menu = $("#menu"), mb = $(".menu-bar"), inMenu = false;
+    if(menu && mb){
+      var r = menu.getBoundingClientRect(), b = mb.getBoundingClientRect();
+      inMenu = b.top <= topH + bh + 2 && r.bottom > topH + b.height + 40;
+    }
+    bar.classList.toggle("is-away", inMenu);
+    // which section is under the bar
+    var cur = "top";
+    NAV.forEach(function(n){ var el = n[0] !== "top" && document.getElementById(n[0]); if(el && el.getBoundingClientRect().top <= line) cur = n[0]; });
+    if(innerHeight + scrollY >= document.documentElement.scrollHeight - 4){ var v = document.getElementById("visit"); if(v) cur = "visit"; }
+    navMark(cur, !now);
+  }
+  var spyRaf = 0;
+  addEventListener("scroll", function(){ if(!spyRaf) spyRaf = requestAnimationFrame(function(){ spyRaf = 0; navSpy(); }); }, {passive: true});
+  addEventListener("resize", function(){ navSpy(true); });
+  document.addEventListener("click", function(e){
+    var a = e.target.closest && e.target.closest('#secchips [data-sec="top"]'); if(!a) return;
+    e.preventDefault(); scrollTo({top: 0, behavior: "smooth"});
+    try{ history.replaceState(null, "", location.pathname + location.search); }catch(x){}
+  });
 
   function renderHero(st, home){
     var h = home.hero || {};
@@ -555,7 +597,7 @@
   function bindMenu(){
     var input = $("#q");
     if(input) input.addEventListener("input", function(){ q = input.value; activeCat = "all"; setChip("all"); paintMenu(); });
-    $$(".chip").forEach(function(ch){
+    $$("#chips .chip").forEach(function(ch){
       ch.addEventListener("click", function(){
         activeCat = ch.getAttribute("data-cat"); q = ""; if(input) input.value = "";
         setChip(activeCat); paintMenu();
@@ -568,7 +610,7 @@
     });
   }
   function setChip(id){
-    $$(".chip").forEach(function(c){
+    $$("#chips .chip").forEach(function(c){
       var on = c.getAttribute("data-cat") === id; c.classList.toggle("is-on", on);
       if(on && c.scrollIntoView) c.scrollIntoView({block:"nearest", inline:"center"});
     });
@@ -592,18 +634,26 @@
 
   function secLoyalty(loy){
     if(!loy || !loy.title) return "";
-    var stamps = ""; for(var i = 0; i < 5; i++) stamps += img(i < 3 ? (loy.stamp_full || "stamp-full") : (loy.stamp_empty || "stamp-empty"), "");
+    var FULL = 3, stamps = "";
+    for(var i = 0; i < 5; i++){
+      var full = i < FULL;
+      stamps += '<span class="stamp' + (full ? " is-full" : "") + '">' + img(full ? (loy.stamp_full || "stamp-full") : (loy.stamp_empty || "stamp-empty"), "") + '</span>';
+    }
     var steps = (loy.steps || []).map(function(s, n){
-      return '<div class="step"><i>0' + (n + 1) + '</i><b>' + esc(L(s)) + '</b><span>' + esc(s["d" + lang] || s.den || "") + '</span></div>';
+      return '<div class="step"><i>' + numAr("0" + (n + 1)) + '</i><div><b>' + esc(L(s)) + '</b><span>' + esc(s["d" + lang] || s.den || "") + '</span></div></div>';
     }).join("");
     var cta = loy.url ? '<a class="btn btn--ink" href="' + esc(loy.url) + '" target="_blank" rel="noopener">' + esc(L(loy.cta)) + '</a>' : "";
     var qr = loy.qr ? '<img class="qr" src="' + esc(loy.qr) + '" alt="QR" width="92" height="92" loading="lazy">' : "";
     return '<section class="sec sec--ink" id="loyalty"><div class="wrap loy reveal">'
-      + '<div><p class="kicker">' + esc(t("loyK")) + '</p><h2 class="h2">' + esc(L(loy.title)) + '</h2>'
-      + '<p class="lede" style="margin-top:18px">' + esc(L(loy.body)) + '</p>'
-      + '<div class="steps">' + steps + '</div><div class="loy__cta">' + cta + qr + '</div></div>'
-      + '<div><div class="card"><span class="logo" aria-hidden="true"></span><div class="stamps">' + stamps + '</div>'
-      + '<small>' + esc(L(loy.scan)) + '</small></div></div>'
+      + '<div class="loy__copy"><p class="kicker">' + esc(t("loyK")) + '</p><h2 class="h2">' + esc(L(loy.title)) + '</h2>'
+      + '<p class="lede">' + esc(L(loy.body)) + '</p>'
+      + '<div class="steps">' + steps + '</div></div>'
+      + '<div class="loy__side"><div class="card" role="img" aria-label="' + esc(L(loy.scan)) + '">'
+      +   '<div class="card__top"><span class="logo" aria-hidden="true"></span><span class="card__count">' + numAr(FULL + " " + t("stampsOf") + " 5") + '</span></div>'
+      +   '<div class="stamps">' + stamps + '</div>'
+      +   '<div class="card__bar"><i style="width:' + (FULL / 5 * 100) + '%"></i></div>'
+      + '</div><small class="card__note">' + esc(L(loy.scan)) + '</small>'
+      + '<div class="loy__cta">' + cta + (qr ? '<span class="loy__qr">' + qr + '</span>' : "") + '</div></div>'
       + '</div></section>';
   }
 
