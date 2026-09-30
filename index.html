@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="image" href="images/hero-800.webp" imagesrcset="images/hero-800.webp 800w, images/hero.webp 1300w" imagesizes="(max-width: 860px) 100vw, 46vw" fetchpriority="high">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Jost:wght@400;500&display=swap">
-<link rel="stylesheet" href="assets/site.css?v=8">
+<link rel="stylesheet" href="assets/site.css?v=9">
 
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"CafeOrCoffeeShop","name":"pressio","url":"https://pressio.ae/",
@@ -52,7 +52,17 @@
   <div class="drawer" id="drawer" hidden></div>
 </header>
 
-<nav class="secbar" id="secbar" aria-label="أقسام الصفحة"><div class="secbar__in chips" id="secchips"></div></nav>
+<nav class="secbar" id="secbar" aria-label="التنقل في الصفحة">
+  <div class="secbar__in">
+    <i class="secbar__glide" id="sbglide" aria-hidden="true"></i>
+    <button class="secbar__ic secbar__home" id="sbhome" type="button" aria-label="أقسام الصفحة"></button>
+    <div class="secbar__tracks">
+      <div class="secbar__track" id="secchips"></div>
+      <div class="secbar__track" id="chips"></div>
+    </div>
+    <button class="secbar__ic secbar__search" id="sbsearch" type="button" aria-label="دوّر في المنيو"></button>
+  </div>
+</nav>
 
 <main id="main">
   <!-- Hero is static HTML so the first paint never waits for data -->
@@ -87,6 +97,6 @@
 </noscript>
 
 <script src="assets/config.js?v=2"></script>
-<script src="assets/site.js?v=8" defer></script>
+<script src="assets/site.js?v=9" defer></script>
 </body>
 </html>
