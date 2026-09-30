@@ -251,9 +251,11 @@ dialog form{display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
 td .pill{margin:2px 0}
 td select[data-r]{min-width:150px}
 
-.pwbox{position:relative}
-.pwbox input{padding-inline-end:48px}
-.pwbox .btn.icon{position:absolute;inset-inline-end:4px;top:50%;transform:translateY(-50%);border:0;background:transparent}
+.pwbox{display:flex;align-items:center;gap:8px}
+.pwbox input{flex:1;min-width:0}
+.pwbox .pw-eye{flex:none;width:42px;min-height:42px;height:42px;border-radius:var(--r-sm);background:#fff;color:var(--ink-2)}
+.pwbox .pw-eye:hover{border-color:var(--ink);color:var(--ink)}
+.pwbox .pw-eye[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
 
 /* people & payroll */
 .rows .r.pline{grid-template-columns:auto minmax(0,2fr) minmax(0,1.4fr) 120px auto}
@@ -267,3 +269,26 @@ h3.lbl{margin:10px 0 2px;font-size:14px}
 .mbar .langbtn{color:#F8F3EC}
 .side__me .langbtn{color:#D9CABC}
 .langbtn.float{position:fixed;top:16px;inset-inline-end:16px;color:var(--ink);border-color:var(--line);background:var(--paper);z-index:5}
+
+/* invoice auto-fill */
+.aibox{display:flex;gap:14px;align-items:flex-start;padding:14px;border-radius:18px;border:1px solid rgba(162,91,74,.22);
+  background:linear-gradient(135deg,rgba(255,255,255,.85),rgba(243,232,221,.75));box-shadow:0 10px 30px -22px rgba(63,50,43,.5)}
+.aibox__prev{flex:none;width:72px;height:92px;border-radius:12px;overflow:hidden;background:var(--sand,#E4D8CA);display:grid;place-items:center;border:1px solid var(--line)}
+.aibox__prev img{width:100%;height:100%;object-fit:cover}
+.aibox__pdf{font-weight:700;font-size:13px;color:#A25B4A;letter-spacing:.08em}
+.aibox__body{flex:1;min-width:0;display:grid;gap:8px}
+.btn.ai{justify-self:start;border:0;color:#fff;background:linear-gradient(120deg,#3F322B,#7A4F40 55%,#A25B4A);background-size:200% 100%;box-shadow:0 8px 20px -10px rgba(162,91,74,.9);transition:background-position .6s,transform .15s}
+.btn.ai:hover{background-position:100% 0}
+.btn.ai:active{transform:scale(.97)}
+.btn.ai svg{width:18px;height:18px}
+.btn.ai[disabled]{opacity:.75;cursor:progress}
+.aibox.is-busy .btn.ai{animation:aishine 1.4s linear infinite}
+@keyframes aishine{0%{background-position:0 0}100%{background-position:200% 0}}
+.aibar{height:6px;border-radius:9px;background:rgba(63,50,43,.1);overflow:hidden}
+.aibar i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#C98A72,#A25B4A);transition:width .35s}
+.aibox.is-done #aimsg{color:var(--ok,#5E7355);font-weight:500}
+.aitext summary{cursor:pointer;font-size:13px;color:var(--ink-2)}
+.aitext pre{white-space:pre-wrap;max-height:200px;overflow:auto;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0 0}
+.f.ai-filled input,.f.ai-filled select{background:#FFF6E9;border-color:#D9A77E;box-shadow:0 0 0 3px rgba(217,167,126,.18)}
+.f.ai-filled label::after{content:" ✦";color:#A25B4A}
+@media (max-width:520px){.aibox{flex-direction:column}.aibox__prev{width:100%;height:120px}.btn.ai{justify-self:stretch}}

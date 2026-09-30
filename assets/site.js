@@ -11,7 +11,7 @@
   var LANG_KEY = "pressio_lang";
 
   var T = {
-    ar:{home:"الرئيسية",delivery:"التوصيل",stampsOf:"من",menu:"المنيو",about:"عن pressio",space:"المكان",loyalty:"الولاء",visit:"زورونا",order:"اطلب توصيل",
+    ar:{sections:"أقسام الصفحة",tryCard:"اضغط على البطاقة وجرّب",free:"مجاناً",won:"السادس علينا!",home:"الرئيسية",delivery:"التوصيل",stampsOf:"من",menu:"المنيو",about:"عن pressio",space:"المكان",loyalty:"الولاء",visit:"زورونا",order:"اطلب توصيل",
         seeMenu:"شوف المنيو",search:"دوّر في المنيو…",all:"الكل",signature:"المفضّلة عندنا",signatureK:"اختياراتنا",
         menuK:"المنيو",menuT:"كل شي نحضّره",aboutK:"عن pressio",spaceK:"المكان",spaceT:"مساحة تريّحك",
         galK:"من البار",galT:"لقطات من يومنا",loyK:"برنامج الولاء",dlvK:"التوصيل",dlvT:"اطلبنا لين عندك",
@@ -21,7 +21,7 @@
         staff:"دخول الموظفين",zoom:"تكبير الصورة",close:"إغلاق",prev:"السابقة",next:"التالية",rights:"جميع الحقوق محفوظة",skip:"تخطّى إلى المحتوى",preview:"معاينة — الموقع تحت الصيانة للزوار",
         exitPreview:"خروج",cur:"د.إ",am:"ص",pm:"م",noon:"ظ",midnight:"منتصف الليل",daily:"يومياً",closed:"مسكّر",today:"اليوم",features:"الخدمات",rating:"على Google",reviews:"تقييم",
         days:["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"]},
-    en:{home:"Home",delivery:"Delivery",stampsOf:"of",menu:"Menu",about:"About",space:"The space",loyalty:"Loyalty",visit:"Visit",order:"Order delivery",
+    en:{sections:"Page sections",tryCard:"Tap the card to try it",free:"Free",won:"The 6th is on us!",home:"Home",delivery:"Delivery",stampsOf:"of",menu:"Menu",about:"About",space:"The space",loyalty:"Loyalty",visit:"Visit",order:"Order delivery",
         seeMenu:"See the menu",search:"Search the menu…",all:"All",signature:"House favourites",signatureK:"Our picks",
         menuK:"Menu",menuT:"Everything we make",aboutK:"About pressio",spaceK:"The space",spaceT:"A room that works",
         galK:"From the bar",galT:"Moments from our day",loyK:"Loyalty",dlvK:"Delivery",dlvT:"Have it brought to you",
@@ -444,60 +444,119 @@
     renderFooter(st, home);
     renderNav();
     bindMenu();
+    bindLoyalty();
     paintMenu();
     reveal();
     if(location.hash && !render.jumped){ render.jumped = true; var el = document.getElementById(location.hash.slice(1)); if(el) el.scrollIntoView(); }
   }
 
-  /* ---------------- section bar ----------------
-     A floating row of chips (like the menu's) that follows you down the page.
-     Inside the menu it slides away so the menu's own category bar takes its place,
-     and comes back once you scroll past the menu. */
+  /* ---------------- floating bar ----------------
+     One glass bar, as wide as the screen, that follows you down the page.
+     · Outside the menu it lists the page sections (Home, About, Menu …).
+     · Inside the menu it turns into the menu's own sections (drinks, bakery …)
+       with a 🏠 button first — tap it and the page sections come back.
+     A soft pill glides under whichever item you're on. */
   var NAV = [["top","home"],["about","about"],["menu","menu"],["space","space"],["loyalty","loyalty"],["delivery","delivery"],["visit","visit"]];
-  var navOn = "";
+  var ICON_HOME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.8l8.5 6.7"/><path d="M5.8 9v10.2h12.4V9"/><path d="M10 19.2v-5.4h4v5.4"/></svg>';
+  var ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>';
+  var NB = {mode: "sec", force: false, forceY: 0, sec: "", cat: "", lock: 0};
   function renderNav(){
+    var bar = $("#secbar");
     var have = NAV.filter(function(n){ return n[0] === "top" || document.getElementById(n[0]); });
-    var box = $("#secchips");
-    box.innerHTML = have.map(function(n){
+    $("#secchips").innerHTML = have.map(function(n){
       return '<a class="chip" href="#' + (n[0] === "top" ? "" : n[0]) + '" data-sec="' + n[0] + '">' + esc(t(n[1])) + '</a>';
     }).join("");
-    $("#secbar").setAttribute("aria-label", lang === "ar" ? "أقسام الصفحة" : "Page sections");
+    $("#chips").innerHTML = (S.categories || []).filter(function(c){ return (S.items || []).some(function(i){ return i.c === c.id; }); })
+      .map(function(c){ return '<a class="chip" href="#c-' + esc(c.id) + '" data-cat="' + esc(c.id) + '">' + esc(L(c, "name")) + '</a>'; }).join("");
+    var hb = $("#sbhome"); hb.innerHTML = ICON_HOME; hb.setAttribute("aria-label", t("sections")); hb.title = t("sections");
+    var sb = $("#sbsearch"); sb.innerHTML = ICON_SEARCH; sb.setAttribute("aria-label", t("search")); sb.title = t("search");
+    bar.setAttribute("aria-label", lang === "ar" ? "التنقل في الصفحة" : "Page navigation");
     $("#nav").innerHTML = ""; $("#drawer").innerHTML = "";
-    navOn = ""; navSpy(true);
+    NB.sec = NB.cat = ""; navSpy(true);
   }
-  function navMark(id, smooth){
-    if(id === navOn) return; navOn = id;
-    var box = $("#secchips"), on = null;
-    $$(".chip", box).forEach(function(c){ var m = c.getAttribute("data-sec") === id; c.classList.toggle("is-on", m); if(m){ on = c; c.setAttribute("aria-current", "true"); } else c.removeAttribute("aria-current"); });
-    if(!on) return;
-    var r = on.getBoundingClientRect(), br = box.getBoundingClientRect();
-    var delta = r.left + r.width / 2 - (br.left + br.width / 2);
-    if(Math.abs(delta) > 2){ try{ box.scrollBy({left: delta, behavior: smooth ? "smooth" : "auto"}); }catch(x){ box.scrollLeft += delta; } }
+  function track(){ return NB.mode === "menu" ? $("#chips") : $("#secchips"); }
+  function glide(instant){
+    var bar = $("#secbar"), g = $("#sbglide"), tr = track(), on = tr && tr.querySelector(".chip.is-on");
+    if(!g) return;
+    if(!on){ g.style.opacity = "0"; return; }
+    var inr = $(".secbar__in").getBoundingClientRect(), r = on.getBoundingClientRect(), tb = tr.getBoundingClientRect();
+    var l = Math.max(r.left, tb.left - 6), w = Math.min(r.right, tb.right + 6) - l;
+    if(w < 8){ g.style.opacity = "0"; return; }
+    if(instant) g.style.transition = "none";
+    g.style.opacity = "1"; g.style.width = w + "px"; g.style.transform = "translateX(" + (l - inr.left) + "px)";
+    if(instant){ void g.offsetWidth; g.style.transition = ""; }
+  }
+  function centre(tr, el, smooth){
+    var r = el.getBoundingClientRect(), br = tr.getBoundingClientRect();
+    var d = r.left + r.width / 2 - (br.left + br.width / 2);
+    if(Math.abs(d) > 2){ try{ tr.scrollBy({left: d, behavior: smooth ? "smooth" : "auto"}); }catch(x){ tr.scrollLeft += d; } }
+  }
+  function mark(tr, attr, id, smooth){
+    var on = null;
+    $$(".chip", tr).forEach(function(c){ var m = c.getAttribute(attr) === id; c.classList.toggle("is-on", m); if(m){ on = c; c.setAttribute("aria-current", "true"); } else c.removeAttribute("aria-current"); });
+    if(on) centre(tr, on, smooth);
+  }
+  function setMode(m){
+    if(NB.mode === m) return; NB.mode = m;
+    var bar = $("#secbar"); bar.classList.toggle("is-menu", m === "menu");
+    requestAnimationFrame(function(){ glide(true); });
+    clearTimeout(setMode.t); setMode.t = setTimeout(function(){ glide(); }, 430);   // after the 🏠 button finishes growing / shrinking
   }
   function navSpy(now){
     var bar = $("#secbar"); if(!bar || !S) return;
-    var topH = $("#top").offsetHeight, bh = bar.offsetHeight || 56, line = topH + bh + 24;
-    // inside the menu? (its own bar has reached the top) → hide ours
-    var menu = $("#menu"), mb = $(".menu-bar"), inMenu = false;
-    if(menu && mb){
-      var r = menu.getBoundingClientRect(), b = mb.getBoundingClientRect();
-      inMenu = b.top <= topH + bh + 2 && r.bottom > topH + b.height + 40;
-    }
-    bar.classList.toggle("is-away", inMenu);
-    // which section is under the bar
+    var topH = $("#top").offsetHeight, bh = bar.offsetHeight || 64, line = topH + bh + 28;
+    var menu = $("#menu"), inMenu = false;
+    if(menu){ var r = menu.getBoundingClientRect(); inMenu = r.top <= topH + bh + 8 && r.bottom > line + 60; }
+    if(!inMenu) NB.force = false;
+    if(NB.force && Math.abs(scrollY - NB.forceY) > 700) NB.force = false;
+    setMode(inMenu && !NB.force ? "menu" : "sec");
+    // page section under the bar
     var cur = "top";
     NAV.forEach(function(n){ var el = n[0] !== "top" && document.getElementById(n[0]); if(el && el.getBoundingClientRect().top <= line) cur = n[0]; });
-    if(innerHeight + scrollY >= document.documentElement.scrollHeight - 4){ var v = document.getElementById("visit"); if(v) cur = "visit"; }
-    navMark(cur, !now);
+    if(innerHeight + scrollY >= document.documentElement.scrollHeight - 4 && document.getElementById("visit")) cur = "visit";
+    if(cur !== NB.sec){ NB.sec = cur; mark($("#secchips"), "data-sec", cur, !now); }
+    // menu section under the bar
+    if(Date.now() > NB.lock){
+      var cat = "";
+      $$("#menu-list .mcat").forEach(function(el){ if(el.getBoundingClientRect().top <= line + 10) cat = el.id.slice(2); });
+      if(!cat){ var f = $("#menu-list .mcat"); if(f) cat = f.id.slice(2); }
+      if(cat !== NB.cat){ NB.cat = cat; mark($("#chips"), "data-cat", cat, !now); }
+    }
+    glide(now);
+  }
+  function goCat(id){
+    var el = document.getElementById("c-" + id); if(!el) return;
+    NB.cat = id; NB.lock = Date.now() + 900; NB.force = false;
+    mark($("#chips"), "data-cat", id, true); setMode("menu"); glide();
+    var bar = $("#secbar"), off = $("#top").offsetHeight + (bar.offsetHeight || 64) + 14;
+    scrollTo({top: el.getBoundingClientRect().top + scrollY - off, behavior: "smooth"});
   }
   var spyRaf = 0;
-  addEventListener("scroll", function(){ if(!spyRaf) spyRaf = requestAnimationFrame(function(){ spyRaf = 0; navSpy(); }); }, {passive: true});
+  addEventListener("scroll", function(){
+    if(document.hidden){ navSpy(); return; }
+    if(!spyRaf) spyRaf = requestAnimationFrame(function(){ spyRaf = 0; navSpy(); });
+  }, {passive: true});
   addEventListener("resize", function(){ navSpy(true); });
-  document.addEventListener("click", function(e){
-    var a = e.target.closest && e.target.closest('#secchips [data-sec="top"]'); if(!a) return;
-    e.preventDefault(); scrollTo({top: 0, behavior: "smooth"});
-    try{ history.replaceState(null, "", location.pathname + location.search); }catch(x){}
-  });
+  function wireBar(){
+    ["#secchips", "#chips"].forEach(function(sel){ $(sel).addEventListener("scroll", function(){ glide(true); }, {passive: true}); });
+    $("#sbhome").addEventListener("click", function(){ NB.force = true; NB.forceY = scrollY; setMode("sec"); var on = $("#secchips .chip.is-on"); if(on) centre($("#secchips"), on, false); glide(true); });
+    $("#sbsearch").addEventListener("click", function(){
+      var box = $("#menu .search"), input = $("#q"); if(!box) return;
+      var off = $("#top").offsetHeight + ($("#secbar").offsetHeight || 64) + 20;
+      scrollTo({top: box.getBoundingClientRect().top + scrollY - off, behavior: "smooth"});
+      setTimeout(function(){ try{ input.focus({preventScroll: true}); }catch(x){ input.focus(); } }, 450);
+    });
+    $("#secbar").addEventListener("click", function(e){
+      var a = e.target.closest(".chip"); if(!a) return;
+      var sec = a.getAttribute("data-sec"), cat = a.getAttribute("data-cat");
+      if(cat){ e.preventDefault(); goCat(cat); return; }
+      if(sec === "top"){ e.preventDefault(); scrollTo({top: 0, behavior: "smooth"}); try{ history.replaceState(null, "", location.pathname + location.search); }catch(x){} return; }
+      if(sec === "menu"){
+        var m = $("#menu").getBoundingClientRect(), topH = $("#top").offsetHeight;
+        if(m.top <= topH + 90 && m.bottom > innerHeight / 2){ e.preventDefault(); NB.force = false; setMode("menu"); glide(true); return; }
+      }
+    });
+  }
 
   function renderHero(st, home){
     var h = home.hero || {};
@@ -555,13 +614,9 @@
   }
 
   function secMenu(){
-    var cats = S.categories || [];
-    var chips = '<button class="chip is-on" data-cat="all">' + esc(t("all")) + '</button>'
-      + cats.map(function(c){ return '<button class="chip" data-cat="' + esc(c.id) + '">' + esc(L(c, "name")) + '</button>'; }).join("");
     return '<section class="sec" id="menu" style="padding-top:clamp(56px,8vw,100px)"><div class="wrap">'
-      + head(t("menuK"), t("menuT")) + '</div>'
-      + '<div class="menu-bar"><div class="wrap menu-bar__in"><div class="chips" id="chips">' + chips + '</div>'
-      + '<label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+      + head(t("menuK"), t("menuT"))
+      + '<div class="menu-bar"><label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
       + '<input id="q" type="search" autocomplete="off" placeholder="' + esc(t("search")) + '" aria-label="' + esc(t("search")) + '" value="' + esc(q) + '"></label></div></div>'
       + '<div class="wrap" id="menu-list"></div></section>';
   }
@@ -570,7 +625,6 @@
     var box = $("#menu-list"); if(!box) return;
     var nq = norm(q), out = "";
     (S.categories || []).forEach(function(c){
-      if(activeCat !== "all" && activeCat !== c.id) return;
       var items = (S.items || []).filter(function(i){
         if(i.c !== c.id) return false;
         if(!nq) return true;
@@ -592,27 +646,15 @@
       out += '</div></div>';
     });
     box.innerHTML = out || '<p class="empty">' + esc(t("nores")) + '</p>';
+    $$("#chips .chip").forEach(function(c){ c.hidden = !document.getElementById("c-" + c.getAttribute("data-cat")); });
+    NB.cat = ""; if(S) navSpy(true);
   }
 
   function bindMenu(){
     var input = $("#q");
-    if(input) input.addEventListener("input", function(){ q = input.value; activeCat = "all"; setChip("all"); paintMenu(); });
-    $$("#chips .chip").forEach(function(ch){
-      ch.addEventListener("click", function(){
-        activeCat = ch.getAttribute("data-cat"); q = ""; if(input) input.value = "";
-        setChip(activeCat); paintMenu();
-        var top = $("#menu-list").getBoundingClientRect().top + scrollY - 150;
-        if(scrollY > top) scrollTo({top: top, behavior: "smooth"});
-      });
-    });
+    if(input) input.addEventListener("input", function(){ q = input.value; paintMenu(); });
     $$("[data-jump]").forEach(function(a){
-      a.addEventListener("click", function(){ activeCat = a.getAttribute("data-jump"); setChip(activeCat); paintMenu(); });
-    });
-  }
-  function setChip(id){
-    $$("#chips .chip").forEach(function(c){
-      var on = c.getAttribute("data-cat") === id; c.classList.toggle("is-on", on);
-      if(on && c.scrollIntoView) c.scrollIntoView({block:"nearest", inline:"center"});
+      a.addEventListener("click", function(e){ var id = a.getAttribute("data-jump"); if(document.getElementById("c-" + id)){ e.preventDefault(); goCat(id); } });
     });
   }
 
@@ -632,29 +674,67 @@
       + '</div></div></section>';
   }
 
+  /* ---------------- loyalty ----------------
+     A frosted-glass card over soft glowing light. When it scrolls into view the
+     stamps are "pressed" one by one; tap the card to add a stamp yourself — the
+     fifth unlocks the free sixth drink. */
+  var CUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.6 7.2h12.8"/><path d="M6.8 7.2 7.1 5a1.1 1.1 0 0 1 1.1-.9h7.6a1.1 1.1 0 0 1 1.1.9l.3 2.2"/><path d="m7.1 7.2 1.3 12a1.1 1.1 0 0 0 1.1 1h5a1.1 1.1 0 0 0 1.1-1l1.3-12"/><path d="M7.7 11.2h8.6l-.5 4.6H8.2z" fill="currentColor" fill-opacity=".18"/></svg>';
+  var GIFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="16" height="11" rx="1.6"/><path d="M3 9h18M12 9v11"/><path d="M12 9S10.8 4.5 8.6 4.5a2 2 0 0 0 0 4.5M12 9s1.2-4.5 3.4-4.5a2 2 0 0 1 0 4.5"/></svg>';
   function secLoyalty(loy){
     if(!loy || !loy.title) return "";
-    var FULL = 3, stamps = "";
-    for(var i = 0; i < 5; i++){
-      var full = i < FULL;
-      stamps += '<span class="stamp' + (full ? " is-full" : "") + '">' + img(full ? (loy.stamp_full || "stamp-full") : (loy.stamp_empty || "stamp-empty"), "") + '</span>';
-    }
+    var stamps = "";
+    for(var i = 0; i < 5; i++) stamps += '<span class="lst" data-n="' + (i + 1) + '">' + CUP + '</span>';
+    stamps += '<span class="lst lst--gift" title="' + esc(t("free")) + '">' + GIFT + '</span>';
     var steps = (loy.steps || []).map(function(s, n){
-      return '<div class="step"><i>' + numAr("0" + (n + 1)) + '</i><div><b>' + esc(L(s)) + '</b><span>' + esc(s["d" + lang] || s.den || "") + '</span></div></div>';
+      return '<div class="step"><i>' + numAr(n + 1) + '</i><div><b>' + esc(L(s)) + '</b><span>' + esc(s["d" + lang] || s.den || "") + '</span></div></div>';
     }).join("");
-    var cta = loy.url ? '<a class="btn btn--ink" href="' + esc(loy.url) + '" target="_blank" rel="noopener">' + esc(L(loy.cta)) + '</a>' : "";
-    var qr = loy.qr ? '<img class="qr" src="' + esc(loy.qr) + '" alt="QR" width="92" height="92" loading="lazy">' : "";
-    return '<section class="sec sec--ink" id="loyalty"><div class="wrap loy reveal">'
+    var cta = loy.url ? '<a class="btn btn--light" href="' + esc(loy.url) + '" target="_blank" rel="noopener">' + esc(L(loy.cta)) + '<span aria-hidden="true">' + (lang === "ar" ? "←" : "→") + '</span></a>' : "";
+    var qr = loy.qr ? '<span class="loy__qr"><img class="qr" src="' + esc(loy.qr) + '" alt="QR" width="72" height="72" loading="lazy"></span>' : "";
+    return '<section class="sec sec--ink loy-sec" id="loyalty"><div class="loy__lights" aria-hidden="true"><i></i><i></i><i></i></div><div class="wrap loy reveal">'
       + '<div class="loy__copy"><p class="kicker">' + esc(t("loyK")) + '</p><h2 class="h2">' + esc(L(loy.title)) + '</h2>'
       + '<p class="lede">' + esc(L(loy.body)) + '</p>'
       + '<div class="steps">' + steps + '</div></div>'
-      + '<div class="loy__side"><div class="card" role="img" aria-label="' + esc(L(loy.scan)) + '">'
-      +   '<div class="card__top"><span class="logo" aria-hidden="true"></span><span class="card__count">' + numAr(FULL + " " + t("stampsOf") + " 5") + '</span></div>'
-      +   '<div class="stamps">' + stamps + '</div>'
-      +   '<div class="card__bar"><i style="width:' + (FULL / 5 * 100) + '%"></i></div>'
-      + '</div><small class="card__note">' + esc(L(loy.scan)) + '</small>'
-      + '<div class="loy__cta">' + cta + (qr ? '<span class="loy__qr">' + qr + '</span>' : "") + '</div></div>'
-      + '</div></section>';
+      + '<div class="loy__side">'
+      +   '<div class="lcard" id="lcard" role="button" tabindex="0" aria-label="' + esc(t("tryCard")) + '">'
+      +     '<i class="lcard__shine" aria-hidden="true"></i>'
+      +     '<div class="lcard__top"><span class="logo" aria-hidden="true"></span><span class="lcard__count" aria-live="polite"></span></div>'
+      +     '<div class="lcard__stamps">' + stamps + '</div>'
+      +     '<div class="lcard__bar"><i></i></div>'
+      +     '<div class="lcard__foot"><span>' + esc(L(loy.scan)) + '</span></div>'
+      +   '</div>'
+      +   '<p class="lcard__try"><span class="dot"></span>' + esc(t("tryCard")) + '</p>'
+      +   '<div class="loy__cta">' + cta + qr + '</div>'
+      + '</div></div></section>';
+  }
+  function bindLoyalty(){
+    var card = $("#lcard"); if(!card) return;
+    var n = 0, busy = 0, reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function paint(){
+      $$(".lst[data-n]", card).forEach(function(el){ el.classList.toggle("is-full", +el.getAttribute("data-n") <= n); });
+      card.classList.toggle("is-won", n >= 5);
+      card.style.setProperty("--p", (n / 5 * 100) + "%");
+      $(".lcard__count", card).textContent = n >= 5 ? t("won") : numAr(n + " " + t("stampsOf") + " 5");
+    }
+    function fillTo(k, step){
+      clearInterval(busy); busy = setInterval(function(){ if(n >= k){ clearInterval(busy); return; } n++; paint(); }, step || 260);
+    }
+    paint();
+    if(reduce || !("IntersectionObserver" in window)){ n = 3; paint(); }
+    else {
+      var io = new IntersectionObserver(function(en){ if(en[0].isIntersecting){ io.disconnect(); setTimeout(function(){ fillTo(3, 320); }, 350); } }, {threshold: .55});
+      io.observe(card);
+    }
+    function tap(){ clearInterval(busy); if(n >= 5){ n = 0; paint(); setTimeout(function(){ n = 1; paint(); }, 180); } else { n++; paint(); } }
+    card.addEventListener("click", tap);
+    card.addEventListener("keydown", function(e){ if(e.key === "Enter" || e.key === " "){ e.preventDefault(); tap(); } });
+    // gentle 3D tilt + light that follows the pointer (mouse / pen only)
+    card.addEventListener("pointermove", function(e){
+      if(e.pointerType === "touch" || reduce) return;
+      var r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      card.style.setProperty("--mx", (x * 100) + "%"); card.style.setProperty("--my", (y * 100) + "%");
+      card.style.transform = "perspective(900px) rotateX(" + ((.5 - y) * 8).toFixed(2) + "deg) rotateY(" + ((x - .5) * 10).toFixed(2) + "deg)";
+    });
+    card.addEventListener("pointerleave", function(){ card.style.transform = ""; });
   }
 
   function secDelivery(home){
@@ -733,6 +813,7 @@
   }
   function wire(){
     $("#lang").addEventListener("click", toggleLang);
+    wireBar();
     var burger = $("#burger"), drawer = $("#drawer");
     function close(){ burger.setAttribute("aria-expanded", "false"); drawer.hidden = true; document.body.style.overflow = ""; }
     burger.addEventListener("click", function(){

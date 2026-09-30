@@ -108,11 +108,35 @@ const I = {
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M19 14v6H4V5h6"/>', dl: '<path d="M12 4v11m0 0-4-4m4 4 4-4M4 20h16"/>',
   upl: '<path d="M12 20V9m0 0-4 4m4-4 4 4M4 4h16"/>', eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C3.8 8.4 2 12 2 12s4 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  spark: '<path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8z"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z"/>',
   id: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.5 16.5a3.6 3.6 0 0 1 7 0M14 9.5h4M14 13h4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>', link: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>'
 };
 const ico = n => raw(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ""}</svg>`);
+/* every password field gets a show / hide eye NEXT to it (outside the box, so it never gets in the way of typing) */
+function pwEyes(root) {
+  if (!root || !root.querySelectorAll) return;
+  const list = root.matches && root.matches("input[type=password]") ? [root] : root.querySelectorAll("input[type=password]");
+  list.forEach(inp => {
+    if (inp.closest(".pwbox")) return;
+    const box = document.createElement("div"); box.className = "pwbox";
+    inp.parentNode.insertBefore(box, inp); box.appendChild(inp);
+    box.insertAdjacentHTML("beforeend", `<button type="button" class="btn icon pw-eye" aria-label="إظهار كلمة السر" aria-pressed="false">${ico("eye").__raw}</button>`);
+  });
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".pw-eye"); if (!b) return;
+  const inp = b.parentNode.querySelector("input"); if (!inp) return;
+  const show = inp.type === "password", end = inp.value.length;
+  inp.type = show ? "text" : "password";
+  b.innerHTML = ico(show ? "eyeoff" : "eye").__raw; b.setAttribute("aria-pressed", String(show));
+  b.setAttribute("aria-label", show ? "إخفاء كلمة السر" : "إظهار كلمة السر");
+  inp.focus({ preventScroll: true }); try { inp.setSelectionRange(end, end); } catch (x) {}
+});
+const pwWatch = () => { pwEyes(document.body); new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => n.nodeType === 1 && pwEyes(n)))).observe(document.body, { childList: true, subtree: true }); };
+document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", pwWatch) : pwWatch();
 
 function toast(msg, kind = "") {
   const t = document.createElement("div");
@@ -445,7 +469,7 @@ function loginView(msg = "") {
       <h1>لوحة pressio</h1><p class="sub">للمالك والموظفين — ادخل بإيميلك</p>
       <div class="f"><label for="em">الإيميل</label><input id="em" name="email" type="email" autocomplete="username" inputmode="email" dir="ltr" required></div>
       <div class="f" style="margin-top:12px"><label for="pw">كلمة السر</label><div class="pwbox"><input id="pw" name="password" type="password" autocomplete="current-password" dir="ltr" required>
-        <button type="button" class="btn icon" id="pwv" aria-label="إظهار كلمة السر">${ico("eye")}</button></div></div>
+        <button type="button" class="btn icon pw-eye" id="pwv" aria-label="إظهار كلمة السر" aria-pressed="false">${ico("eye")}</button></div></div>
       <label class="check" style="margin-top:12px"><input type="checkbox" id="rm" checked> تذكّرني على هذا الجهاز</label>
       <p class="hint" id="lmsg" style="min-height:22px;margin-top:10px;color:var(--bad)">${msg}</p>
       <button class="btn primary wide" type="submit">دخول</button>
@@ -471,7 +495,6 @@ function loginView(msg = "") {
   };
   let last = ""; try { last = localStorage.getItem("pressio_last_email") || ""; } catch (x) {}
   if (last) $("#em").value = last;
-  $("#pwv").onclick = () => { const p = $("#pw"); p.type = p.type === "password" ? "text" : "password"; p.focus(); };
   setTimeout(() => { const f = last ? $("#pw") : $("#em"); if (f) f.focus(); }, 50);
 }
 
@@ -964,6 +987,15 @@ VIEWS.invoices = async el => {
     ${up ? html`<details class="card" ${rows.length ? "" : "open"} id="newinv"><summary style="cursor:pointer;font-weight:600">${ico("plus")} فاتورة جديدة</summary>
       <form id="invf" class="grid" style="margin-top:14px" novalidate>
         <div class="f"><label>صورة الفاتورة أو PDF *</label><input type="file" name="file" accept="image/*,application/pdf" capture="environment" required></div>
+        <div class="aibox" id="aibox" hidden>
+          <div class="aibox__prev" id="aiprev"></div>
+          <div class="aibox__body">
+            <button type="button" class="btn ai" id="aigo">${ico("spark")} <span>تعبئة تلقائية بالذكاء الاصطناعي</span></button>
+            <p class="hint" id="aimsg">يقرأ الفاتورة ويعبّي الخانات تحت — وأنت تتأكد منها قبل الإرسال.</p>
+            <div class="aibar" id="aibar" hidden><i></i></div>
+            <details class="aitext" id="aitext" hidden><summary>النص اللي انقرأ من الفاتورة</summary><pre dir="auto" data-notr></pre></details>
+          </div>
+        </div>
         <div class="bi"><div class="f"><label>المورّد</label><input type="text" name="supplier" list="sup"></div>
           <div class="f"><label>رقم الفاتورة</label><input type="text" name="invoice_no" dir="ltr"></div></div>
         <div class="bi"><div class="f"><label>تاريخ الفاتورة</label><input type="date" name="invoice_date" value="${today()}"></div>
@@ -998,6 +1030,7 @@ VIEWS.invoices = async el => {
         { submit: "رفض", onSubmit: async f => { await api.rpc("review_invoice", { p_id: id, p_status: "rejected", p_note: f.n.value.trim() ? "سبب الرفض: " + f.n.value.trim() : null }); toast("انرفضت", "ok"); VIEWS.invoices(el); return true; } });
     }
   };
+  if ($("#invf")) invAutoFill($("#invf"), rows);
   if ($("#invf")) $("#invf").onsubmit = async e => {
     e.preventDefault(); const f = e.target;
     const file = f.file.files[0]; if (!file) return toast("أرفق صورة الفاتورة أو PDF", "bad");
@@ -1010,6 +1043,53 @@ VIEWS.invoices = async el => {
     });
   };
 };
+
+/* invoice auto-fill: reads the attached photo / PDF on this device and fills the form (see assets/inv-ai.js) */
+function invAutoFill(f, rows) {
+  const box = $("#aibox", f), prev = $("#aiprev", f), go = $("#aigo", f), msg = $("#aimsg", f), bar = $("#aibar", f), txt = $("#aitext", f);
+  const fields = ["supplier", "invoice_no", "invoice_date", "total", "category", "notes"];
+  const unmark = () => fields.forEach(n => f[n].closest(".f").classList.remove("ai-filled"));
+  fields.forEach(n => f[n].addEventListener("input", () => f[n].closest(".f").classList.remove("ai-filled")));
+  let url = "";
+  f.file.addEventListener("change", () => {
+    const file = f.file.files[0]; unmark();
+    if (url) { URL.revokeObjectURL(url); url = ""; }
+    if (!file) { box.hidden = true; return; }
+    box.hidden = false; bar.hidden = true; txt.hidden = true; go.disabled = false; box.classList.remove("is-busy", "is-done");
+    msg.textContent = "يقرأ الفاتورة ويعبّي الخانات تحت — وأنت تتأكد منها قبل الإرسال.";
+    if (/^image\//.test(file.type)) { url = URL.createObjectURL(file); put(prev, html`<img src="${url}" alt="">`); }
+    else put(prev, html`<span class="aibox__pdf">PDF</span>`);
+  });
+  const STEP = { pdf: "نفتح ملف الـ PDF…", engine: "نجهّز قارئ الفواتير… (أول مرة بس ياخذ شوي)", read: "نقرأ الفاتورة…", parse: "نرتّب البيانات…" };
+  go.onclick = async () => {
+    const file = f.file.files[0]; if (!file) return toast("أرفق صورة الفاتورة أو PDF أول", "bad");
+    if (!window.PressioInvoiceAI) return toast("قارئ الفواتير ما تحمّل — حدّث الصفحة", "bad");
+    go.disabled = true; box.classList.add("is-busy"); box.classList.remove("is-done"); bar.hidden = false; unmark();
+    const setP = (stage, p) => {
+      const pct = stage === "engine" ? 5 + p * 25 : stage === "read" ? 30 + p * 65 : stage === "parse" ? 100 : 3;
+      $("i", bar).style.width = Math.round(pct) + "%";
+      msg.textContent = STEP[stage] + (stage === "read" ? " " + Math.round(p * 100) + "٪" : "");
+    };
+    const names = Array.from(new Set(rows.map(r => r.supplier).filter(Boolean)));
+    const catOf = {}; rows.forEach(r => { if (r.supplier && r.category && !catOf[r.supplier]) catOf[r.supplier] = r.category; });
+    try {
+      const { fields: r, text } = await window.PressioInvoiceAI.read(file, { names, catOf }, setP);
+      let n = 0;
+      const set = (name, v) => { if (v == null || v === "") return; f[name].value = v; f[name].closest(".f").classList.add("ai-filled"); n++; };
+      set("supplier", r.supplier); set("invoice_no", r.invoice_no); set("invoice_date", r.invoice_date);
+      set("total", r.total != null ? r.total.toFixed(2) : "");
+      if (r.category && INV_CAT_AR[r.category]) set("category", r.category);
+      if (r.trn && !f.notes.value.trim()) set("notes", "TRN المورّد: " + r.trn);
+      put($("pre", txt), text.trim() || "—"); txt.hidden = !text.trim();
+      box.classList.remove("is-busy"); box.classList.add("is-done");
+      msg.textContent = n ? `عبّينا ${n} خانات ✓ — راجع الخانات المظلّلة وصحّح أي شي قبل ما ترسل.` : "ما قدرنا نطلّع بيانات واضحة — جرّب صورة أوضح (قريبة ومستقيمة) أو عبّيها بيدك.";
+      const first = $(".ai-filled input, .ai-filled select", f); if (first) first.scrollIntoView({ block: "center", behavior: "smooth" });
+    } catch (e) {
+      box.classList.remove("is-busy");
+      msg.textContent = /load/.test(e.message || "") ? "تعذّر تحميل قارئ الفواتير — تأكد من الإنترنت وجرّب مرة ثانية." : "ما قدرنا نقرأ الملف — جرّب صورة ثانية أو عبّيها بيدك.";
+    } finally { go.disabled = false; setTimeout(() => { bar.hidden = true; }, 800); }
+  };
+}
 
 /* ---------- daily report ---------- */
 VIEWS.reports = async el => {
