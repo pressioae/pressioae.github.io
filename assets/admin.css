@@ -292,3 +292,4 @@ h3.lbl{margin:10px 0 2px;font-size:14px}
 .f.ai-filled input,.f.ai-filled select{background:#FFF6E9;border-color:#D9A77E;box-shadow:0 0 0 3px rgba(217,167,126,.18)}
 .f.ai-filled label::after{content:" ✦";color:#A25B4A}
 @media (max-width:520px){.aibox{flex-direction:column}.aibox__prev{width:100%;height:120px}.btn.ai{justify-self:stretch}}
+.rows.ai-filled input{background:#FFF6E9;border-color:#D9A77E}

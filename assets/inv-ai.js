@@ -271,5 +271,41 @@
     return { fields: parse(text, known), text: text };
   }
 
-  window.PressioInvoiceAI = { read: read, parse: parse, _t: { amounts: amounts, datesIn: datesIn, findNo: findNo, findTotal: findTotal, findSupplier: findSupplier, guessCat: guessCat } };
+  /* prepare(file) → {mime, data(base64)} small enough to send to the server reader.
+     Photos are shrunk to ~1800px JPEG (keeps handwriting sharp, ~300 KB). */
+  function b64(buf) {
+    var bin = "", bytes = new Uint8Array(buf), i, step = 0x8000;
+    for (i = 0; i < bytes.length; i += step) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    return btoa(bin);
+  }
+  async function prepare(file) {
+    var isPdf = /pdf/i.test(file.type) || /\.pdf$/i.test(file.name || "");
+    if (isPdf) {
+      if (file.size > 6.4e6) throw new Error("size");
+      return { mime: "application/pdf", data: b64(await file.arrayBuffer()) };
+    }
+    try {
+      var c = await new Promise(function (res, rej) {
+        var url = URL.createObjectURL(file), im = new Image();
+        im.onload = function () {
+          var sc = Math.min(1, 1800 / Math.max(im.naturalWidth, im.naturalHeight));
+          var cv = document.createElement("canvas"); cv.width = Math.round(im.naturalWidth * sc); cv.height = Math.round(im.naturalHeight * sc);
+          var x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(im, 0, 0, cv.width, cv.height);
+          URL.revokeObjectURL(url); res(cv);
+        };
+        im.onerror = function () { URL.revokeObjectURL(url); rej(new Error("image")); };
+        im.src = url;
+      });
+      var url = c.toDataURL("image/jpeg", 0.86);
+      return { mime: "image/jpeg", data: url.slice(url.indexOf(",") + 1) };
+    } catch (e) {
+      // e.g. iPhone HEIC the browser can't draw: send it as it is
+      if (file.size > 6.4e6) throw new Error("size");
+      var m = (file.type || "").toLowerCase();
+      if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(m)) throw new Error("type");
+      return { mime: m, data: b64(await file.arrayBuffer()) };
+    }
+  }
+
+  window.PressioInvoiceAI = { read: read, parse: parse, prepare: prepare, _t: { amounts: amounts, datesIn: datesIn, findNo: findNo, findTotal: findTotal, findSupplier: findSupplier, guessCat: guessCat } };
 })();

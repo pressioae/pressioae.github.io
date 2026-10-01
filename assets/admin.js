@@ -1044,7 +1044,32 @@ VIEWS.invoices = async el => {
   };
 };
 
-/* invoice auto-fill: reads the attached photo / PDF on this device and fills the form (see assets/inv-ai.js) */
+/* Gemini reader on the server (supabase/functions/doc-ai). The key never reaches the browser.
+   Throws Error("no_key") until the owner adds GEMINI_API_KEY in Supabase. */
+async function docAI(file, kind, extra = {}) {
+  const prep = await window.PressioInvoiceAI.prepare(file);
+  let r;
+  try {
+    r = await fetch(`${C.url}/functions/v1/doc-ai`, { method: "POST",
+      headers: { apikey: C.key, Authorization: `Bearer ${await api.token()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, mime: prep.mime, data: prep.data, ...extra }) });
+  } catch (e) { throw new Error("net"); }
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 404) throw new Error("no_fn");
+  if (!r.ok || !j.ok) throw new Error(j.error || "ai");
+  return j.fields || {};
+}
+const AI_ERR = {
+  no_key: "القراءة بالذكاء الاصطناعي تحتاج مفتاح Gemini — المالك يضيفه مرة وحدة في Supabase.",
+  bad_key: "مفتاح Gemini غير صحيح — المالك يتأكد منه في Supabase.",
+  no_fn: "خدمة القراءة مب مفعّلة على السيرفر بعد.",
+  busy: "Gemini مشغول الحين (وصلنا حد الاستخدام المجاني لهالدقيقة) — جرّب بعد دقيقة.",
+  net: "تعذّر الاتصال — تأكد من الإنترنت وجرّب مرة ثانية.",
+  size: "الملف كبير — صوّر الورقة بس أو ارفع ملف أصغر من ٦ ميغا.",
+  type: "نوع الملف مب مدعوم — ارفع صورة أو PDF."
+};
+
+/* invoice auto-fill: Gemini on the server first; if it isn't available, the free reader on this device (assets/inv-ai.js) */
 function invAutoFill(f, rows) {
   const box = $("#aibox", f), prev = $("#aiprev", f), go = $("#aigo", f), msg = $("#aimsg", f), bar = $("#aibar", f), txt = $("#aitext", f);
   const fields = ["supplier", "invoice_no", "invoice_date", "total", "category", "notes"];
@@ -1060,20 +1085,33 @@ function invAutoFill(f, rows) {
     if (/^image\//.test(file.type)) { url = URL.createObjectURL(file); put(prev, html`<img src="${url}" alt="">`); }
     else put(prev, html`<span class="aibox__pdf">PDF</span>`);
   });
-  const STEP = { pdf: "نفتح ملف الـ PDF…", engine: "نجهّز قارئ الفواتير… (أول مرة بس ياخذ شوي)", read: "نقرأ الفاتورة…", parse: "نرتّب البيانات…" };
+  const STEP = { cloud: "Gemini يقرأ الفاتورة…", pdf: "نفتح ملف الـ PDF…", engine: "نجهّز قارئ الفواتير… (أول مرة بس ياخذ شوي)", read: "نقرأ الفاتورة…", parse: "نرتّب البيانات…" };
   go.onclick = async () => {
     const file = f.file.files[0]; if (!file) return toast("أرفق صورة الفاتورة أو PDF أول", "bad");
     if (!window.PressioInvoiceAI) return toast("قارئ الفواتير ما تحمّل — حدّث الصفحة", "bad");
     go.disabled = true; box.classList.add("is-busy"); box.classList.remove("is-done"); bar.hidden = false; unmark();
     const setP = (stage, p) => {
-      const pct = stage === "engine" ? 5 + p * 25 : stage === "read" ? 30 + p * 65 : stage === "parse" ? 100 : 3;
+      const pct = stage === "cloud" ? 35 : stage === "engine" ? 5 + p * 25 : stage === "read" ? 30 + p * 65 : stage === "parse" ? 100 : 3;
       $("i", bar).style.width = Math.round(pct) + "%";
       msg.textContent = STEP[stage] + (stage === "read" ? " " + Math.round(p * 100) + "٪" : "");
     };
     const names = Array.from(new Set(rows.map(r => r.supplier).filter(Boolean)));
     const catOf = {}; rows.forEach(r => { if (r.supplier && r.category && !catOf[r.supplier]) catOf[r.supplier] = r.category; });
     try {
-      const { fields: r, text } = await window.PressioInvoiceAI.read(file, { names, catOf }, setP);
+      let r, text = "", via = "gemini";
+      try {
+        setP("cloud", .3);
+        const g = await docAI(file, "invoice", { suppliers: names });
+        r = { supplier: g.supplier || "", invoice_no: g.invoice_no || "", invoice_date: /^\d{4}-\d{2}-\d{2}$/.test(g.invoice_date || "") ? g.invoice_date : "",
+          total: typeof g.total === "number" ? g.total : null, category: g.category && g.category !== "other" ? g.category : "", trn: (g.supplier_trn || "").replace(/\D/g, "") };
+        if (!r.category && r.supplier && catOf[r.supplier]) r.category = catOf[r.supplier];
+        text = "";
+      } catch (ge) {
+        if (!/no_key|bad_key|no_fn|net|busy|ai|server/.test(ge.message || "")) throw ge;
+        via = "local";
+        const res = await window.PressioInvoiceAI.read(file, { names, catOf }, setP);
+        r = res.fields; text = res.text;
+      }
       let n = 0;
       const set = (name, v) => { if (v == null || v === "") return; f[name].value = v; f[name].closest(".f").classList.add("ai-filled"); n++; };
       set("supplier", r.supplier); set("invoice_no", r.invoice_no); set("invoice_date", r.invoice_date);
@@ -1083,10 +1121,62 @@ function invAutoFill(f, rows) {
       put($("pre", txt), text.trim() || "—"); txt.hidden = !text.trim();
       box.classList.remove("is-busy"); box.classList.add("is-done");
       msg.textContent = n ? `عبّينا ${n} خانات ✓ — راجع الخانات المظلّلة وصحّح أي شي قبل ما ترسل.` : "ما قدرنا نطلّع بيانات واضحة — جرّب صورة أوضح (قريبة ومستقيمة) أو عبّيها بيدك.";
+      box.dataset.via = via;
       const first = $(".ai-filled input, .ai-filled select", f); if (first) first.scrollIntoView({ block: "center", behavior: "smooth" });
     } catch (e) {
       box.classList.remove("is-busy");
-      msg.textContent = /load/.test(e.message || "") ? "تعذّر تحميل قارئ الفواتير — تأكد من الإنترنت وجرّب مرة ثانية." : "ما قدرنا نقرأ الملف — جرّب صورة ثانية أو عبّيها بيدك.";
+      msg.textContent = AI_ERR[e.message] || (/load/.test(e.message || "") ? "تعذّر تحميل قارئ الفواتير — تأكد من الإنترنت وجرّب مرة ثانية." : "ما قدرنا نقرأ الملف — جرّب صورة ثانية أو عبّيها بيدك.");
+    } finally { go.disabled = false; setTimeout(() => { bar.hidden = true; }, 800); }
+  };
+}
+
+/* daily report auto-fill from a photo of the (handwritten) sheet — Gemini on the server */
+function reportAutoFill(f, fields, state, redraw) {
+  const box = $("#raibox", f), prev = $("#raiprev", f), go = $("#raigo", f), msg = $("#raimsg", f), bar = $("#raibar", f);
+  const HINT = "Gemini يقرأ الورقة حتى لو مكتوبة بخط اليد ويعبّي الخانات تحت — وأنت تتأكد منها قبل الإرسال.";
+  const unmark = () => $$(".f.ai-filled, .rows.ai-filled", f).forEach(x => x.classList.remove("ai-filled"));
+  f.addEventListener("input", e => { const w = e.target.closest(".f, .rows"); if (w) w.classList.remove("ai-filled"); });
+  let url = "";
+  f.file.addEventListener("change", () => {
+    const file = f.file.files[0]; unmark();
+    if (url) { URL.revokeObjectURL(url); url = ""; }
+    if (!file) { box.hidden = true; return; }
+    box.hidden = false; bar.hidden = true; go.disabled = false; box.classList.remove("is-busy", "is-done"); msg.textContent = HINT;
+    if (/^image\//.test(file.type)) { url = URL.createObjectURL(file); put(prev, html`<img src="${url}" alt="">`); }
+    else put(prev, html`<span class="aibox__pdf">PDF</span>`);
+  });
+  go.onclick = async () => {
+    const file = f.file.files[0]; if (!file) return;
+    if (!window.PressioInvoiceAI) return toast("قارئ الملفات ما تحمّل — حدّث الصفحة", "bad");
+    go.disabled = true; box.classList.add("is-busy"); box.classList.remove("is-done"); bar.hidden = false; unmark();
+    $("i", bar).style.width = "35%"; msg.textContent = "Gemini يقرأ ورقة التقرير…";
+    try {
+      const g = await docAI(file, "report", { fields: fields.map(x => ({ key: x.key, ar: x.ar, en: x.en, kind: x.kind })) });
+      $("i", bar).style.width = "100%";
+      let n = 0;
+      const num = v => typeof v === "number" && isFinite(v) ? v : null;
+      const set = (name, v) => { if (v == null || v === "" || !f[name]) return; f[name].value = v; f[name].closest(".f").classList.add("ai-filled"); n++; };
+      if (/^\d{4}-\d{2}-\d{2}$/.test(g.report_date || "")) set("report_date", g.report_date);
+      set("orders_count", num(g.orders_count)); set("cash", num(g.cash)); set("open_float", num(g.open_float)); set("drawer_count", num(g.drawer_count));
+      const ex = g.extras || {};
+      fields.forEach(fd => {
+        const v = ex[fd.key]; if (v == null) return;
+        set("x_" + fd.key, fd.kind === "bool" ? (v ? "1" : "0") : fd.kind === "text" ? String(v) : num(v));
+      });
+      const exps = (g.expenses || []).filter(x => x && (x.desc || num(x.amount) != null)).map(x => ({ desc: String(x.desc || ""), amount: num(x.amount) ?? "", cash: x.cash !== false }));
+      const wst = (g.waste || []).filter(x => x && x.item).map(x => ({ item: String(x.item), qty: num(x.qty) ?? "", reason: String(x.reason || "") }));
+      if (exps.length) { state.expenses = exps; n += exps.length; }
+      if (wst.length) { state.waste = wst; n += wst.length; }
+      if (g.notes && !f.notes.value.trim()) set("notes", String(g.notes).slice(0, 500));
+      redraw();
+      if (exps.length) $("#exp", f).classList.add("rows", "ai-filled");
+      if (wst.length) $("#wst", f).classList.add("rows", "ai-filled");
+      box.classList.remove("is-busy"); box.classList.add("is-done");
+      msg.textContent = n ? `عبّينا ${n} خانات ✓ — راجع الخانات المظلّلة وصحّح أي شي قبل ما ترسل.` : "ما قدرنا نطلّع بيانات واضحة — جرّب صورة أوضح (قريبة ومستقيمة) أو عبّيها بيدك.";
+      const first = $(".ai-filled input, .ai-filled select, .ai-filled textarea", f); if (first) first.scrollIntoView({ block: "center", behavior: "smooth" });
+    } catch (e) {
+      box.classList.remove("is-busy");
+      msg.textContent = AI_ERR[e.message] || "ما قدرنا نقرأ الورقة — جرّب صورة ثانية أو عبّيها بيدك.";
     } finally { go.disabled = false; setTimeout(() => { bar.hidden = true; }, 800); }
   };
 }
@@ -1100,6 +1190,15 @@ VIEWS.reports = async el => {
   put(el, html`${head("التقرير اليومي", all ? (up ? "تقارير الفريق — والفورم لتقرير اليوم" : "تقارير الفريق") : "اكتبه قبل ما تسكّر — بعد الإرسال ما ينعدّل")}
     ${up ? html`<details class="card" id="newrep" ${rows.some(r => r.report_date === today() && r.created_by === api.sess.uid) ? "" : "open"}><summary style="cursor:pointer;font-weight:600">${ico("plus")} تقرير جديد</summary>
     <form id="rf" class="grid" style="margin-top:14px" novalidate>
+      <div class="f"><label>صورة ورقة التقرير (اختياري)</label><input type="file" name="file" accept="image/*,application/pdf" capture="environment"></div>
+      <div class="aibox" id="raibox" hidden>
+        <div class="aibox__prev" id="raiprev"></div>
+        <div class="aibox__body">
+          <button type="button" class="btn ai" id="raigo">${ico("spark")} <span>عبّي التقرير من الصورة</span></button>
+          <p class="hint" id="raimsg">Gemini يقرأ الورقة حتى لو مكتوبة بخط اليد ويعبّي الخانات تحت — وأنت تتأكد منها قبل الإرسال.</p>
+          <div class="aibar" id="raibar" hidden><i></i></div>
+        </div>
+      </div>
       <div class="bi"><div class="f"><label>اليوم</label><input type="date" name="report_date" value="${today()}" required></div>
         <div class="f"><label>عدد الطلبات</label><input type="number" name="orders_count" min="0" class="num"></div></div>
       <h3 class="lbl" style="font-size:14px">المبيعات</h3>
@@ -1112,8 +1211,7 @@ VIEWS.reports = async el => {
       <div class="f"><span class="lbl">مصاريف اليوم</span><div class="rows" id="exp"></div><button type="button" class="btn sm" data-add="expenses" style="width:max-content">${ico("plus")} مصروف</button></div>
       <div class="f"><span class="lbl">الهالك</span><div class="rows" id="wst"></div><button type="button" class="btn sm" data-add="waste" style="width:max-content">${ico("plus")} هالك</button></div>
       <div class="calc" id="calc"></div>
-      <div class="bi"><div class="f"><label>ملاحظات</label><textarea name="notes"></textarea></div>
-        <div class="f"><label>صورة ورقة التقرير (اختياري)</label><input type="file" name="file" accept="image/*,application/pdf" capture="environment"></div></div>
+      <div class="f"><label>ملاحظات</label><textarea name="notes"></textarea></div>
       <div class="row end"><button class="btn primary" type="submit">إرسال التقرير</button></div>
     </form></details>` : ""}
     <div class="card"><h2 style="margin-bottom:12px">التقارير</h2>${rows.length ? html`<div class="tbl-wrap"><table><thead><tr><th>اليوم</th><th>المبيعات</th><th>كاش</th><th>بطاقة</th><th>توصيل</th><th>فرق الدرج</th><th>كتبه</th><th></th></tr></thead>
@@ -1144,6 +1242,7 @@ VIEWS.reports = async el => {
       <div><span>مصاريف من الدرج</span><b class="num">${fmtMoney(c.cashExp)}</b></div><div><span>الفرق</span><b class="num">${f.drawer_count.value === "" ? "—" : fmtMoney(c.variance)}</b>${f.drawer_count.value === "" ? "" : html`<span class="pill ${c.verdict[1]}">${c.verdict[0]}</span>`}</div>`);
   };
   rowsUi(); paintCalc();
+  reportAutoFill(f, fields, state, () => { rowsUi(); paintCalc(); });
   f.oninput = e => { const x = e.target.closest("[data-e]"); if (x) setPath(state, x.dataset.e, x.type === "checkbox" ? x.checked : x.value); paintCalc(); };
   f.onclick = e => {
     const a = e.target.closest("[data-add]"); if (a) { state[a.dataset.add].push(a.dataset.add === "expenses" ? { desc: "", amount: "", cash: true } : { item: "", qty: "", reason: "" }); rowsUi(); }
