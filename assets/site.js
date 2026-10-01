@@ -675,16 +675,13 @@
   }
 
   /* ---------------- loyalty ----------------
-     A frosted-glass card over soft glowing light. When it scrolls into view the
-     stamps are "pressed" one by one; tap the card to add a stamp yourself — the
-     fifth unlocks the free sixth drink. */
-  var CUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.6 7.2h12.8"/><path d="M6.8 7.2 7.1 5a1.1 1.1 0 0 1 1.1-.9h7.6a1.1 1.1 0 0 1 1.1.9l.3 2.2"/><path d="m7.1 7.2 1.3 12a1.1 1.1 0 0 0 1.1 1h5a1.1 1.1 0 0 0 1.1-1l1.3-12"/><path d="M7.7 11.2h8.6l-.5 4.6H8.2z" fill="currentColor" fill-opacity=".18"/></svg>';
-  var GIFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="16" height="11" rx="1.6"/><path d="M3 9h18M12 9v11"/><path d="M12 9S10.8 4.5 8.6 4.5a2 2 0 0 0 0 4.5M12 9s1.2-4.5 3.4-4.5a2 2 0 0 1 0 4.5"/></svg>';
+     The pressio stamp card (same layout as the real wallet card) in frosted glass
+     over soft glowing light. When it scrolls into view the cups are "stamped" one
+     by one; tap the card to add a stamp yourself — the fifth unlocks the free drink. */
   function secLoyalty(loy){
     if(!loy || !loy.title) return "";
-    var stamps = "";
-    for(var i = 0; i < 5; i++) stamps += '<span class="lst" data-n="' + (i + 1) + '">' + CUP + '</span>';
-    stamps += '<span class="lst lst--gift" title="' + esc(t("free")) + '">' + GIFT + '</span>';
+    var full = loy.stamp_full || "stamp-full", empty = loy.stamp_empty || "stamp-empty", stamps = "";
+    for(var i = 0; i < 5; i++) stamps += '<span class="lst" data-n="' + (i + 1) + '">' + img(empty, "", "lst__e") + img(full, "", "lst__f") + '</span>';
     var steps = (loy.steps || []).map(function(s, n){
       return '<div class="step"><i>' + numAr(n + 1) + '</i><div><b>' + esc(L(s)) + '</b><span>' + esc(s["d" + lang] || s.den || "") + '</span></div></div>';
     }).join("");
@@ -697,10 +694,9 @@
       + '<div class="loy__side">'
       +   '<div class="lcard" id="lcard" role="button" tabindex="0" aria-label="' + esc(t("tryCard")) + '">'
       +     '<i class="lcard__shine" aria-hidden="true"></i>'
-      +     '<div class="lcard__top"><span class="logo" aria-hidden="true"></span><span class="lcard__count" aria-live="polite"></span></div>'
+      +     '<span class="logo" aria-hidden="true"></span>'
       +     '<div class="lcard__stamps">' + stamps + '</div>'
-      +     '<div class="lcard__bar"><i></i></div>'
-      +     '<div class="lcard__foot"><span>' + esc(L(loy.scan)) + '</span></div>'
+      +     '<small class="lcard__cap" data-cap="' + esc(L(loy.scan)) + '">' + esc(L(loy.scan)) + '</small>'
       +   '</div>'
       +   '<p class="lcard__try"><span class="dot"></span>' + esc(t("tryCard")) + '</p>'
       +   '<div class="loy__cta">' + cta + qr + '</div>'
@@ -712,8 +708,7 @@
     function paint(){
       $$(".lst[data-n]", card).forEach(function(el){ el.classList.toggle("is-full", +el.getAttribute("data-n") <= n); });
       card.classList.toggle("is-won", n >= 5);
-      card.style.setProperty("--p", (n / 5 * 100) + "%");
-      $(".lcard__count", card).textContent = n >= 5 ? t("won") : numAr(n + " " + t("stampsOf") + " 5");
+      var cap = $(".lcard__cap", card); cap.textContent = n >= 5 ? t("won") : cap.getAttribute("data-cap");
     }
     function fillTo(k, step){
       clearInterval(busy); busy = setInterval(function(){ if(n >= k){ clearInterval(busy); return; } n++; paint(); }, step || 260);
