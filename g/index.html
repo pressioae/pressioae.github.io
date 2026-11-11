@@ -1,1 +1,178 @@
-<!doctype html><meta charset="utf-8"><title>pressio</title>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>pressio — هديتك</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#EFE7DC">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://sfhqhrqrmakypptqtbxf.supabase.co" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Jost:wght@400;500&display=swap">
+<style>
+:root{--ground:#EFE7DC;--paper:#F8F3EC;--line:#D8CABA;--ink:#3F322B;--ink-2:#6B584C;--muted:#8E7A6B;--clay:#A25B4A;--ok:#5E7355;--warn:#A8702A;
+  font-family:"IBM Plex Sans Arabic","Jost",system-ui,-apple-system,"Segoe UI",sans-serif}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100svh;color:var(--ink);font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(70vmax 55vmax at 92% -8%,#E2CDBC 0,rgba(226,205,188,0) 60%),radial-gradient(60vmax 50vmax at -10% 105%,#DEC9B6 0,rgba(222,201,182,0) 60%),var(--ground);
+  display:flex;flex-direction:column;align-items:center;padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
+[hidden]{display:none!important}
+h1,p{margin:0}
+.top{width:min(460px,100%);display:flex;align-items:center;justify-content:space-between;min-height:48px}
+.logo{display:block;width:118px;aspect-ratio:700/186;background:var(--ink);-webkit-mask:url(../images/logo.webp) center/contain no-repeat;mask:url(../images/logo.webp) center/contain no-repeat}
+.lang{border:1px solid var(--line);background:transparent;border-radius:999px;height:40px;min-width:48px;padding:0 12px;cursor:pointer;font:inherit;font-size:13px;color:inherit}
+.wrap{flex:1;width:min(460px,100%);display:flex;flex-direction:column;justify-content:center;gap:14px;padding:clamp(10px,3svh,28px) 0}
+.card{position:relative;overflow:hidden;border-radius:28px;padding:clamp(20px,4.2svh,34px) 24px clamp(18px,3.6svh,28px);text-align:center;
+  background:linear-gradient(160deg,rgba(255,255,255,.72),rgba(255,255,255,.42));border:1px solid rgba(255,255,255,.8);
+  -webkit-backdrop-filter:blur(18px) saturate(1.2);backdrop-filter:blur(18px) saturate(1.2);
+  box-shadow:0 1px 0 rgba(255,255,255,.8) inset,0 24px 50px -24px rgba(63,50,43,.38)}
+.ic{width:clamp(48px,9svh,68px);height:clamp(48px,9svh,68px);margin:0 auto clamp(8px,1.8svh,16px);border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#F8F3EC}
+.ic svg{width:48%;height:48%}
+.card.is-used .ic{background:var(--muted)} .card.is-done .ic{background:var(--ok)} .card.is-warn .ic{background:var(--warn)}
+.k{font-size:13.5px;color:var(--muted);letter-spacing:.02em}
+html[lang=en] .k{letter-spacing:.14em;text-transform:uppercase;font-size:12px}
+h1{font-size:clamp(1.55rem,5.2svh,2.3rem);line-height:1.3;font-weight:600;margin-top:4px;text-wrap:balance;overflow-wrap:anywhere}
+.pct{font-family:"Jost",sans-serif;font-size:clamp(3rem,11svh,5rem);line-height:1;font-weight:500;color:var(--clay);margin-top:6px;direction:ltr}
+.note{margin-top:10px;color:var(--ink-2);font-size:15px;white-space:pre-line;overflow-wrap:anywhere}
+.how{margin-top:clamp(12px,2.6svh,22px);padding-top:clamp(12px,2.4svh,20px);border-top:1px dashed var(--line);font-size:14.5px;color:var(--ink-2)}
+.code{display:inline-block;margin-top:8px;padding:5px 16px;border-radius:999px;background:rgba(63,50,43,.07);font-family:"Jost",ui-monospace,monospace;font-size:17px;letter-spacing:.16em;direction:ltr;user-select:all}
+.exp{margin-top:8px;font-size:13px;color:var(--muted)}
+.btns{display:flex;flex-direction:column;gap:10px}
+.btn{display:flex;align-items:center;justify-content:center;min-height:50px;padding:0 22px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#F8F3EC;text-decoration:none;font:inherit;font-size:15.5px;font-weight:500;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.staff{background:var(--clay);border-color:var(--clay)}
+.foot{font-size:12.5px;color:var(--muted);text-align:center;margin-top:6px}
+.spin{width:34px;height:34px;margin:26px auto;border-radius:50%;border:3px solid rgba(63,50,43,.15);border-top-color:var(--ink);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@keyframes pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
+.card.pop{animation:pop .45s cubic-bezier(.2,.8,.2,1)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+/* short screens (small phones, the cover screen of a folding phone): tighten so the whole gift shows without scrolling */
+@media (max-height:700px){
+  body{line-height:1.55;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  .top{min-height:42px} .logo{width:104px} .lang{height:36px}
+  .wrap{gap:10px;padding:8px 0}
+  .card{border-radius:24px;padding:16px 20px 14px}
+  .ic{width:44px;height:44px;margin-bottom:6px}
+  .pct{font-size:clamp(2.6rem,9svh,3.6rem);margin-top:2px}
+  h1{font-size:clamp(1.3rem,4.4svh,1.8rem);margin-top:2px}
+  .note{margin-top:4px;font-size:14px}
+  .how{margin-top:10px;padding-top:10px;font-size:14px}
+  .code{margin-top:6px;font-size:16px;padding:3px 14px} .exp{margin-top:5px}
+  .btns{gap:8px} .btn{min-height:46px} .foot{margin-top:2px;font-size:12px}
+}
+@media (max-height:600px){ .foot{display:none} }
+/* wide + short screens (a phone held sideways, the open screen of a folding phone): card beside the buttons */
+@media (min-width:700px) and (max-height:620px){
+  .wrap{width:min(860px,100%);flex-direction:row;align-items:center;gap:22px}
+  .top{width:min(860px,100%)} .card{flex:1.25} .btns{flex:.75}
+}
+</style>
+</head>
+<body>
+<header class="top"><a href="../" aria-label="pressio"><span class="logo"></span></a><button class="lang" id="lang" type="button" hidden>EN</button></header>
+<main class="wrap" id="wrap"><div class="card"><div class="spin" role="status" aria-label="…"></div></div></main>
+<script src="../assets/config.js?v=2"></script>
+<script>
+(function(){
+  "use strict";
+  var CFG = window.PRESSIO || {}, $ = function(s){ return document.querySelector(s); };
+  function read(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function store(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  function esc(v){ return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  var T = {
+    ar: { title: "هديتك", k: "هديتك من pressio", kd: "خصم خاص لك من pressio", how: "ورِّ هالشاشة للموظف عند الطلب", exp: "صالحة لين ", menu: "شوف المنيو", site: "زور موقعنا",
+          used: "هالهدية انستخدمت", usedOn: "تم استخدامها بتاريخ ", usedSub: "كل كود يشتغل مرة وحدة بس. ننتظرك على قهوة ثانية!",
+          done: "بالعافية!", doneSub: "تم استخدام هديتك", expired: "انتهت مدة هالهدية", expiredSub: "كانت صالحة لين ", paused: "هالهدية غير مفعّلة حالياً", pausedSub: "اسأل الموظف أو جرّب بعدين.",
+          none: "ما لقينا هالكود", noneSub: "تأكد من الرابط أو اسأل الموظف.", err: "ما قدرنا نتصل", errSub: "تأكد من الإنترنت وحاول مرة ثانية.", again: "حاول مرة ثانية",
+          staff: "للموظف: تأكيد الاستخدام", foot: "الكود يُستخدم مرة وحدة · Q1 مول، الورقاء" },
+    en: { title: "Your gift", k: "Your gift from pressio", kd: "A special discount from pressio", how: "Show this screen to the barista when you order", exp: "Valid until ", menu: "See the menu", site: "Visit our website",
+          used: "This gift has been used", usedOn: "Used on ", usedSub: "Each code works once. See you for the next coffee!",
+          done: "Enjoy!", doneSub: "Your gift has been redeemed", expired: "This gift has expired", expiredSub: "It was valid until ", paused: "This gift is not active right now", pausedSub: "Ask the barista or try again later.",
+          none: "We couldn't find this code", noneSub: "Check the link or ask the barista.", err: "Couldn't connect", errSub: "Check your internet and try again.", again: "Try again",
+          staff: "Staff: confirm redemption", foot: "Each code works once · Q1 Mall, Al Warqa" }
+  };
+  var ICON = {
+    gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM3 7h18v4H3zM12 7v14M12 7S10.5 3 8 3a2 2 0 0 0 0 4zM12 7s1.500-4 4-4a2 2 0 0 1 0 4z"/></svg>',
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.500 4.500 4.500L19 7.500"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01"/></svg>'
+  };
+  var q = new URLSearchParams(location.search);
+  var code = (q.get("c") || location.hash.replace(/^#/, "") || location.search.replace(/^\?/, "")).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
+  var staff = false;
+  try{ staff = !!(localStorage.getItem("pressio_admin_v2") || sessionStorage.getItem("pressio_admin_v2") || localStorage.getItem("pressio_last_email")); }catch(e){}
+  var only = read("pressio_langs"), lang = only === "ar" || only === "en" ? only : (read("pressio_lang") === "en" ? "en" : "ar");
+  var G = null, first = true, timer = 0, polls = 0;
+
+  function L(o, base){ return (o && (o[base + "_" + lang] || o[base + "_" + (lang === "ar" ? "en" : "ar")])) || ""; }
+  function day(d){ try{ return new Date(d).toLocaleDateString(lang === "ar" ? "ar-AE" : "en-GB", {day: "numeric", month: "long", year: "numeric", timeZone: CFG.tz || "Asia/Dubai"}); }catch(e){ return String(d).slice(0, 10); } }
+  function pretty(c){ return c.length === 8 ? c.slice(0, 4) + "-" + c.slice(4) : c; }
+
+  function call(count){
+    var ctl = window.AbortController ? new AbortController() : null, to = setTimeout(function(){ if(ctl) ctl.abort(); }, 12000);
+    return fetch(CFG.url + "/rest/v1/rpc/gift_view", { method: "POST", signal: ctl ? ctl.signal : undefined,
+      headers: {"apikey": CFG.key, "Content-Type": "application/json"}, body: JSON.stringify({p_code: code, p_count: !!count}) })
+      .then(function(r){ clearTimeout(to); if(!r.ok) throw new Error(r.status); return r.json(); }, function(e){ clearTimeout(to); throw e; });
+  }
+  function paint(state){
+    var t = T[lang], g = G || {}, h = "", cls = "", btns = "";
+    document.documentElement.lang = lang; document.documentElement.dir = lang === "ar" ? "rtl" : "ltr"; document.title = "pressio — " + t.title;
+    var lb = $("#lang"); lb.hidden = !!only; lb.textContent = lang === "ar" ? "EN" : "ع"; lb.setAttribute("aria-label", lang === "ar" ? "English" : "العربية");
+    var title = esc(L(g, "title")), note = esc(L(g, "note"));
+    var body = (g.kind === "discount" && g.percent ? '<p class="pct">' + esc(g.percent) + '%</p>' : "") + '<h1>' + title + '</h1>' + (note ? '<p class="note">' + note + '</p>' : "");
+    if(state === "ok"){
+      h = '<div class="ic">' + ICON.gift + '</div><p class="k">' + (g.kind === "discount" ? t.kd : t.k) + '</p>' + body
+        + '<div class="how"><p>' + t.how + '</p><span class="code">' + esc(pretty(g.code)) + '</span>' + (g.expires_on ? '<p class="exp">' + t.exp + esc(day(g.expires_on)) + '</p>' : "") + '</div>';
+    } else if(state === "done"){
+      cls = "is-done"; h = '<div class="ic">' + ICON.ok + '</div><h1>' + t.done + '</h1><p class="note">' + t.doneSub + (title ? ' — ' + title : "") + '</p>';
+    } else if(state === "used"){
+      cls = "is-used"; h = '<div class="ic">' + ICON.ok + '</div><p class="k">' + title + '</p><h1>' + t.used + '</h1><p class="note">' + (g.redeemed_at ? t.usedOn + esc(day(g.redeemed_at)) + '\n' : "") + t.usedSub + '</p>';
+    } else if(state === "expired"){
+      cls = "is-warn"; h = '<div class="ic">' + ICON.x + '</div><p class="k">' + title + '</p><h1>' + t.expired + '</h1>' + (g.expires_on ? '<p class="note">' + t.expiredSub + esc(day(g.expires_on)) + '</p>' : "");
+    } else if(state === "paused"){
+      cls = "is-warn"; h = '<div class="ic">' + ICON.x + '</div><p class="k">' + title + '</p><h1>' + t.paused + '</h1><p class="note">' + t.pausedSub + '</p>';
+    } else if(state === "none"){
+      cls = "is-warn"; h = '<div class="ic">' + ICON.x + '</div><h1>' + t.none + '</h1><p class="note">' + t.noneSub + '</p>';
+    } else {
+      cls = "is-warn"; h = '<div class="ic">' + ICON.x + '</div><h1>' + t.err + '</h1><p class="note">' + t.errSub + '</p>';
+      btns = '<button class="btn" type="button" id="again">' + t.again + '</button>';
+    }
+    if(staff && (state === "ok" || state === "used" || state === "expired" || state === "paused"))
+      btns += '<a class="btn staff" href="../admin.html#/gifts?c=' + encodeURIComponent(g.code || code) + '">' + t.staff + '</a>';
+    btns += '<a class="btn' + (btns ? " ghost" : "") + '" href="../?s=gift#menu">' + t.menu + '</a>';
+    $("#wrap").innerHTML = '<div class="card pop ' + cls + '" data-state="' + state + '">' + h + '</div><div class="btns">' + btns + '<p class="foot">' + t.foot + '</p></div>';
+    var a = $("#again"); if(a) a.onclick = function(){ load(false); };
+  }
+  var shown = "";
+  function show(state){ shown = state; paint(state); }
+  function load(quiet){
+    if(!code){ G = null; return show("none"); }
+    call(first && !staff).then(function(g){
+      first = false;
+      var was = shown; G = g;
+      only = g.langs === "ar" || g.langs === "en" ? g.langs : ""; if(only) lang = only;
+      var st = g.status === "used" && was === "ok" ? "done" : g.status;
+      if(quiet && (st === was || (was === "done" && st === "used"))) return;
+      show(st);
+    }).catch(function(){ if(!quiet) show("err"); });
+  }
+  // while the gift is on screen, notice the moment the barista redeems it
+  function tick(){
+    clearTimeout(timer);
+    timer = setTimeout(function(){
+      if(document.visibilityState === "visible" && shown === "ok" && polls++ < 150) load(true);
+      tick();
+    }, 4000);
+  }
+  document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible" && shown === "ok") load(true); });
+  $("#lang").onclick = function(){ if(only) return; lang = lang === "ar" ? "en" : "ar"; store("pressio_lang", lang); paint(shown || "err"); };
+  document.documentElement.lang = lang; document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  load(false); tick();
+})();
+</script>
+</body>
+</html>
