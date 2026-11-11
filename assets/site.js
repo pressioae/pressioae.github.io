@@ -136,10 +136,18 @@
     if(/^https?:|^images\//.test(id)) return id;
     var m = media(id); return m ? m.url : "";
   }
-  function img(id, alt, cls, sizes){
+  // small copy of a photo (made by the admin panel) — used for the little squares in the menu;
+  // the full photo is only fetched when someone opens it.
+  function tsrc(id){ var m = media(id); return (m && m.t) || src(id); }
+  document.addEventListener("error", function(e){
+    var im = e.target; if(!im || im.tagName !== "IMG") return;
+    var full = im.getAttribute("data-full"); if(!full) return;
+    im.removeAttribute("data-full"); im.src = full;          // small copy missing → show the full photo
+  }, true);
+  function img(id, alt, cls, sizes, small){
     var u = src(id); if(!u) return "";
-    var m = media(id) || {};
-    return '<img src="' + esc(u) + '" alt="' + esc(alt || L(m, "alt")) + '" loading="lazy" decoding="async"'
+    var m = media(id) || {}, tu = small && m.t ? m.t : "";
+    return '<img src="' + esc(tu || u) + '"' + (tu ? ' data-full="' + esc(u) + '"' : "") + ' alt="' + esc(alt || L(m, "alt")) + '" loading="lazy" decoding="async"'
       + (m.w ? ' width="' + m.w + '" height="' + m.h + '"' : "") + (cls ? ' class="' + cls + '"' : "")
       + (sizes ? ' sizes="' + sizes + '"' : "") + '>';
   }
@@ -174,6 +182,81 @@
     // if the network is slow on a first visit, draw the saved copy after a moment
     setTimeout(function(){ if(!shown) snapshot().then(function(d){ if(!shown) show(d); }).catch(function(){}); }, 1500);
   }
+
+  /* ---------------- anonymous visit counter ----------------
+     Feeds the owner's dashboard: how many people visited, where they came from (e.g. the printed
+     QR code), and which items / sections they tapped. No names, no phone numbers, no cookies —
+     just a random code kept in this browser so one person is not counted twice.
+     Staff devices (signed in to the admin panel) and robots are not counted. */
+  var TR = {q: [], t: 0, seen: {}, on: null, src: ""};
+  function trackOn(){
+    if(TR.on !== null) return TR.on;
+    var on = !!(CFG.url && CFG.key && window.fetch);
+    try{
+      if(navigator.webdriver || /bot|crawl|spider|headless|lighthouse|preview/i.test(navigator.userAgent)) on = false;
+      if(isPreview()) on = false;
+      if(localStorage.getItem("pressio_admin_v2") || sessionStorage.getItem("pressio_admin_v2") || localStorage.getItem("pressio_last_email")) on = false;
+    }catch(e){}
+    return (TR.on = on);
+  }
+  function visitorId(){
+    var v = read("pressio_vid");
+    if(!v || !/^[a-z0-9]{8,24}$/.test(v)){
+      v = ""; for(var i = 0; i < 14; i++) v += "abcdefghijklmnopqrstuvwxyz0123456789".charAt(Math.floor(Math.random() * 36));
+      store("pressio_vid", v);
+    }
+    return v;
+  }
+  (function(){            // where did this visit come from?  ?s=qr on the printed code, or the site that linked here
+    var src = "", m = /[?&](?:s|utm_source)=([A-Za-z0-9_-]{1,20})/.exec(location.search);
+    try{ src = sessionStorage.getItem("pressio_src") || ""; }catch(e){}
+    if(m){
+      src = m[1].toLowerCase();
+      try{ var u = new URL(location.href); u.searchParams.delete("s"); history.replaceState(history.state, "", u.pathname + u.search + u.hash); }catch(e){}
+    } else if(!src){
+      var r = document.referrer || "";
+      src = !r ? "direct" : /instagram\./i.test(r) ? "instagram" : /google\./i.test(r) ? "google" : /tiktok\./i.test(r) ? "tiktok"
+          : /facebook\.|fb\./i.test(r) ? "facebook" : /snapchat\./i.test(r) ? "snapchat" : r.indexOf(location.host) >= 0 ? "direct" : "other";
+    }
+    try{ sessionStorage.setItem("pressio_src", src); }catch(e){}
+    TR.src = src;
+  })();
+  function flush(){
+    clearTimeout(TR.t); TR.t = 0;
+    if(!TR.q.length) return;
+    var body = JSON.stringify({p_vid: visitorId(), p_events: TR.q.splice(0, 25), p_src: TR.src, p_lang: lang,
+      p_dev: (window.matchMedia && matchMedia("(max-width: 820px), (pointer: coarse)").matches) ? "m" : "d"});
+    try{
+      fetch(CFG.url + "/rest/v1/rpc/track", {method: "POST", keepalive: true,
+        headers: {"apikey": CFG.key, "Content-Type": "application/json"}, body: body}).catch(function(){});
+    }catch(e){}
+  }
+  function count1(kind, ref, once){
+    if(!trackOn()) return;
+    ref = String(ref || "").slice(0, 60);
+    if(once){ var k = kind + ":" + ref; if(TR.seen[k]) return; TR.seen[k] = 1; }
+    TR.q.push({k: kind, r: ref});
+    if(TR.q.length >= 20) flush(); else if(!TR.t) TR.t = setTimeout(flush, 1500);
+  }
+  document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "hidden") flush(); });
+  addEventListener("pagehide", flush);
+  // which item did they tap (a row in the menu, or its photo)
+  document.addEventListener("click", function(e){
+    var row = e.target.closest && e.target.closest(".mi[data-item]");
+    if(row) count1("item", row.getAttribute("data-item"), true);
+    var a = e.target.closest && e.target.closest("a[href]"); if(!a || !S) return;
+    var h = a.getAttribute("href") || "", info = ((S.settings || {}).home || {}).info || {}, name = "";
+    (((S.settings || {}).home || {}).delivery || []).forEach(function(d){ if(d.url && h === d.url) name = String(d.en || "").toLowerCase(); });
+    if(!name){
+      var loy = (S.settings || {}).loyalty || {};
+      if(loy.url && h === loy.url) name = "loyalty";
+      else if(/^tel:/.test(h)) name = "phone";
+      else if(/instagram\.com/.test(h)) name = "instagram";
+      else if(/wa\.me|whatsapp/.test(h)) name = "whatsapp";
+      else if((info.map && h === info.map) || /google\.[a-z.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(h)) name = "map";
+    }
+    if(name) count1("cta", name);
+  }, true);
 
   /* ---------------- logo: tap = back to top; 5 quick taps = staff sign-in ----------------
      Taps are counted the moment the finger touches the logo (pointerdown / touchstart), not on
@@ -220,7 +303,7 @@
           if(it.c !== c.id || !shown(it)) return;
           (it.images || []).filter(src).forEach(function(id, k){
             if(it.id === wantId && k === 0){ pos = {g: groups.length, i: slides.length}; }
-            slides.push({u: src(id), cap: L(it, "name"), sub: priceTxt(it.price)});
+            slides.push({u: src(id), tu: tsrc(id), id: it.id, cap: L(it, "name"), sub: priceTxt(it.price)});
           });
         });
         if(slides.length) groups.push({name: L(c, "name"), slides: slides});
@@ -240,7 +323,7 @@
   function lbThumbs(){
     var box = LB.el.querySelector(".lb__thumbs"), s = LB.groups[LB.g].slides;
     box.innerHTML = s.map(function(x, k){
-      return '<button type="button" class="lb__th" data-k="' + k + '" aria-label="' + esc(x.cap) + '"><img src="' + esc(x.u) + '" alt="" loading="lazy" decoding="async"></button>';
+      return '<button type="button" class="lb__th" data-k="' + k + '" aria-label="' + esc(x.cap) + '"><img src="' + esc(x.tu || x.u) + '"' + (x.tu && x.tu !== x.u ? ' data-full="' + esc(x.u) + '"' : "") + ' alt="" loading="lazy" decoding="async"></button>';
     }).join("");
     box.hidden = s.length < 2;
   }
@@ -277,6 +360,7 @@
   // dir: +1 = came from "next", -1 = from "previous", 0 = no slide
   function lbShow(dir, groupChanged){
     var el = LB.el, im = el.querySelector(".lb__img"), s = lbCur(), rtl = lang === "ar";
+    if(s.id) count1("item", s.id, true);
     el.classList.remove("is-zoom");
     if(groupChanged){ lbThumbs(); }
     lbText(); lbMark(true); lbPreload();
@@ -440,6 +524,7 @@
     if(maint.on && !isPreview()){ renderMaint(maint, home); return; }
     document.body.classList.remove("is-maint");
     var mEl = $("#maint"); if(mEl) mEl.remove();
+    count1("view", "", true);
     renderPreviewBar(maint.on);
 
     renderHero(st, home);
@@ -539,6 +624,7 @@
   function goCat(id){
     var el = document.getElementById("c-" + id); if(!el) return;
     NB.cat = id; NB.lock = Date.now() + 900; NB.force = false;
+    count1("cat", id, true);
     mark($("#chips"), "data-cat", id, true); setMode("menu"); glide();
     var bar = $("#secbar"), off = $("#top").offsetHeight + (bar.offsetHeight || 64) + 14;
     scrollTo({top: el.getBoundingClientRect().top + scrollY - off, behavior: "smooth"});
@@ -621,7 +707,7 @@
     var list = (S.items || []).filter(function(i){ return shown(i) && i.featured && i.images && i.images.length && src(i.images[0]); });
     if(!list.length) return "";
     var cards = list.map(function(i){
-      return '<a class="sig" href="#menu" data-jump="' + esc(i.c) + '"><div class="sig__img">' + img(i.images[0], L(i, "name")) + '</div>'
+      return '<a class="sig" href="#menu" data-jump="' + esc(i.c) + '"><div class="sig__img">' + img(i.images[0], L(i, "name"), "", "", true) + '</div>'
         + '<div class="sig__row"><b>' + esc(L(i, "name")) + '</b>' + money(i.price) + '</div></a>';
     }).join("");
     return '<section class="sec sec--paper"><div class="wrap reveal">' + head(t("signatureK"), t("signature"))
@@ -651,8 +737,8 @@
       out += '<div class="mcat" id="c-' + esc(c.id) + '"><div class="mcat__head"><h3>' + esc(L(c, "name")) + '</h3>' + hrs + '</div><div class="mitems">';
       items.forEach(function(i){
         var pic = i.images && i.images[0] && src(i.images[0]);
-        out += '<div class="mi' + (pic ? " has-img" : "") + '">'
-          + (pic ? '<div class="mi__img" data-lb="menu" data-id="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(t("zoom") + " — " + L(i, "name")) + '">' + img(i.images[0], L(i, "name")) + (i.images.filter(src).length > 1 ? '<span class="mi__more">' + numAr(i.images.filter(src).length) + '</span>' : "") + '</div>' : "")
+        out += '<div class="mi' + (pic ? " has-img" : "") + '" data-item="' + esc(i.id) + '">'
+          + (pic ? '<div class="mi__img" data-lb="menu" data-id="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(t("zoom") + " — " + L(i, "name")) + '">' + img(i.images[0], L(i, "name"), "", "", true) + (i.images.filter(src).length > 1 ? '<span class="mi__more">' + numAr(i.images.filter(src).length) + '</span>' : "") + '</div>' : "")
           + '<div class="mi__name">' + esc(L(i, "name")) + '</div>'
           + money(i.price)
           + (L(i, "desc") ? '<p class="mi__desc">' + esc(L(i, "desc")) + '</p>' : "")
@@ -667,7 +753,11 @@
 
   function bindMenu(){
     var input = $("#q");
-    if(input) input.addEventListener("input", function(){ q = input.value; paintMenu(); });
+    var qt = 0;
+    if(input) input.addEventListener("input", function(){
+      q = input.value; paintMenu();
+      clearTimeout(qt); qt = setTimeout(function(){ var w = norm(q).trim(); if(w.length >= 2) count1("search", w.slice(0, 40), true); }, 1500);
+    });
     $$("[data-jump]").forEach(function(a){
       a.addEventListener("click", function(e){ var id = a.getAttribute("data-jump"); if(document.getElementById("c-" + id)){ e.preventDefault(); goCat(id); } });
     });

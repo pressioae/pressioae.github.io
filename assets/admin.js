@@ -88,6 +88,7 @@ const clone = o => JSON.parse(JSON.stringify(o ?? null));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: C.tz });
 const fmtMoney = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const L = (ar, en) => UI_LANG === "en" ? en : ar;      // a text in the language of the panel
 const fmtDate = d => d ? new Date(d).toLocaleString(UI_LANG === "en" ? "en-GB" : "ar-AE", { timeZone: C.tz, dateStyle: "medium", timeStyle: "short" }) : "—";
 const fmtDay = d => d ? new Date(d + (String(d).length === 10 ? "T00:00:00" : "")).toLocaleDateString(UI_LANG === "en" ? "en-GB" : "ar-AE", { timeZone: C.tz, dateStyle: "medium" }) : "—";
 const kb = b => b == null ? "" : b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
@@ -246,8 +247,8 @@ const api = {
     return r;
   }),
   rpc: (fn, args = {}) => api.req(`/rest/v1/rpc/${fn}`, { method: "POST", body: args }),
-  upload: (bucket, path, blob) => api.req(`/storage/v1/object/${bucket}/${path.split("/").map(encodeURIComponent).join("/")}`, {
-    method: "POST", body: blob, raw: true, headers: { "Content-Type": blob.type || "application/octet-stream", "cache-control": "31536000", "x-upsert": "false" }
+  upload: (bucket, path, blob, upsert = false) => api.req(`/storage/v1/object/${bucket}/${path.split("/").map(encodeURIComponent).join("/")}`, {
+    method: "POST", body: blob, raw: true, headers: { "Content-Type": blob.type || "application/octet-stream", "cache-control": "31536000", "x-upsert": upsert ? "true" : "false" }
   }),
   removeObj: (bucket, path) => api.req(`/storage/v1/object/${bucket}/${path.split("/").map(encodeURIComponent).join("/")}`, { method: "DELETE" }),
   async signed(bucket, path, secs = 300) {
@@ -307,7 +308,16 @@ const mediaUrl = id => {
   const m = mediaById(id); if (!m || m.kind === "docs") return "";
   return m.url;
 };
-const thumb = (id, alt = "") => { const u = mediaUrl(id); return u ? html`<img src="${u}" alt="${alt}" loading="lazy">` : ""; };
+// lists show the small copy of a photo (fast, light on phones); the full photo loads only if the small one is missing
+const thumb = (id, alt = "") => {
+  const u = mediaUrl(id); if (!u) return "";
+  const m = /^https?:|^images\//.test(id) ? null : mediaById(id), t = m && m.thumb;
+  return t ? html`<img src="${t}" data-full="${u}" alt="${alt}" loading="lazy" decoding="async">` : html`<img src="${u}" alt="${alt}" loading="lazy" decoding="async">`;
+};
+document.addEventListener("error", e => {
+  const im = e.target; if (!im || im.tagName !== "IMG" || !im.dataset.full) return;
+  const full = im.dataset.full; delete im.dataset.full; im.src = full;
+}, true);
 
 async function saveSettingsPart(paths, draft) {
   // re-read the latest copy first so two people editing different sections never overwrite each other
@@ -338,6 +348,31 @@ function compress(file, maxW = 1600, q = 0.82) {
     img.src = url;
   });
 }
+/* a small copy (about 480px, ~25 KB) of a photo — "source" is the file being uploaded or the address of a stored photo */
+const THUMB_OK = /^image\/(jpeg|png|webp)$/i;
+async function makeThumb(source, side = 480, q = 0.78) {
+  let blob = source;
+  if (typeof source === "string") {
+    const r = await xfetch(source, { mode: "cors", cache: "no-store" }, 60000);
+    if (!r.ok) throw new Error(`(${r.status}) photo`);
+    blob = await r.blob();
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("image")); i.src = url; });
+    const k = Math.min(1, side / Math.min(img.naturalWidth, img.naturalHeight), (side * 2) / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    const out = await new Promise(res => c.toBlob(b => {
+      if (b && b.type === "image/webp") return res(b);
+      c.toBlob(j => res(j), "image/jpeg", 0.8);          // Safari can't write webp
+    }, "image/webp", q));
+    c.width = c.height = 0; img.src = "";
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+
 const extOf = blob => ({ "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/svg+xml": "svg", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "application/pdf": "pdf", "image/heic": "heic" }[blob.type] || "bin");
 
 async function uploadMedia(file, kind, folder) {
@@ -346,10 +381,16 @@ async function uploadMedia(file, kind, folder) {
   if (!isVid && !/^image\//.test(file.type)) throw new Error("نوع الملف غير مدعوم: " + file.name);
   if (isVid && file.size > 50 * 1048576) throw new Error("الفيديو أكبر من ٥٠ ميغا: " + file.name);
   const { blob, w, h } = isVid ? { blob: file } : await compress(file, kind === "venue" ? 2000 : 1600);
-  const path = `${kind}/${slug(folder) || "general"}/${uid()}.${extOf(blob)}`;
+  const name = uid(), path = `${kind}/${slug(folder) || "general"}/${name}.${extOf(blob)}`;
   await api.upload("media", path, blob);
+  // every photo gets its small copy right away (the big one is kept as it is)
+  let thumbUrl = null;
+  if (!isVid && THUMB_OK.test(blob.type)) {
+    try { const t = await makeThumb(blob); if (t) { const tp = `thumbs/${name}.${extOf(t)}`; await api.upload("media", tp, t, true); thumbUrl = api.publicUrl(tp); } }
+    catch (e) { console.warn("thumb", e); }      // the background job below will make it later
+  }
   const base = file.name.replace(/\.[^.]+$/, "");
-  const row = await api.insert("media", { kind, folder: folder || "", url: api.publicUrl(path), bucket: "media", path, mime: blob.type, width: w || null, height: h || null, bytes: blob.size, alt_ar: base, alt_en: base });
+  const row = await api.insert("media", { kind, folder: folder || "", url: api.publicUrl(path), thumb: thumbUrl, bucket: "media", path, mime: blob.type, width: w || null, height: h || null, bytes: blob.size, alt_ar: base, alt_en: base });
   S.media.unshift(row);
   return row;
 }
@@ -530,6 +571,39 @@ function pendingView() {
   $("#lo").onclick = async () => { await api.signOut(); location.reload(); };
 }
 
+/* Makes the small copy for every stored photo that doesn't have one yet (photos uploaded before this
+   feature, or when making it failed). Runs quietly after sign-in for people who can edit the site. */
+async function thumbJob() {
+  if (thumbJob.on || !can("site")) return;
+  thumbJob.on = true;
+  let bar = null;
+  try {
+    const rows = await api.select("media", "select=id,url,mime&bucket=eq.media&thumb=is.null&mime=in.(image/webp,image/jpeg,image/png)&order=created_at.desc");
+    if (!rows.length) return;
+    bar = document.createElement("div"); bar.className = "jobbar"; bar.setAttribute("data-notr", "");
+    bar.innerHTML = '<span></span><i><b></b></i>'; document.body.appendChild(bar);
+    let done = 0, fail = 0, net = 0;
+    for (const r of rows) {
+      if (!api.sess) break;
+      bar.firstChild.textContent = L(`نجهّز الصور المصغّرة… ${done + fail + 1} / ${rows.length}`, `Preparing small photos… ${done + fail + 1} / ${rows.length}`);
+      bar.querySelector("b").style.width = Math.round((done + fail) / rows.length * 100) + "%";
+      try {
+        const t = await makeThumb(r.url); if (!t) throw new Error("image");
+        const tp = `thumbs/${r.id}.${extOf(t)}`;
+        await api.upload("media", tp, t, true);
+        const row = await api.update("media", `id=eq.${encodeURIComponent(r.id)}`, { thumb: api.publicUrl(tp) });
+        const m = (S.media || []).find(x => x.id === r.id); if (m) m.thumb = row.thumb;
+        done++; net = 0;
+      } catch (e) { fail++; console.warn("thumb", r.id, e); if (isNetErr(e) && ++net >= 3) break; }
+    }
+    bar.querySelector("b").style.width = "100%";
+    bar.firstChild.textContent = done + fail < rows.length ? L(`وقفنا مؤقتاً — جهزت ${done} من ${rows.length}، والباقي يكمل المرة الجاية`, `Paused — ${done} of ${rows.length} ready, the rest continues next time`)
+      : fail ? L(`جهزت ${done} صورة مصغّرة — ${fail} ما ضبطت وبنعيدها المرة الجاية`, `${done} small photos ready — ${fail} failed and will be retried next time`) : L(`جهزت ${done} صورة مصغّرة ✓`, `${done} small photos ready ✓`);
+    const done_bar = bar; setTimeout(() => done_bar.remove(), 6000);
+  } catch (e) { console.warn("thumbJob", e); if (bar) bar.remove(); }
+  finally { thumbJob.on = false; }
+}
+
 function retryView(msg) {
   put($("#root"), html`<div class="login"><div class="login__box" style="text-align:center">
     <span class="logo"></span><h1>ما قدرنا نوصل للسيرفر</h1>
@@ -552,6 +626,7 @@ async function start() {
   shell();
   window.onhashchange = route;
   route();
+  setTimeout(thumbJob, 2500);
 }
 
 /* ------------------------------------------------------------------
@@ -602,11 +677,17 @@ VIEWS.home = async el => {
       ${can("inv_review") || can("view_all") ? html`<a class="stat" href="#/invoices" style="text-decoration:none;color:inherit"><b>${pend ? pend.length : 0}</b><span>فاتورة بانتظار المراجعة</span></a>`
                   : html`<div class="stat"><b>${S.cats.length}</b><span>قسم</span></div>`}
     </div>
+    <div class="card vis" style="margin-top:16px" data-notr><div class="row between"><div><h2>${L("زوار الموقع", "Site visitors")}</h2>
+      <p class="hint">${L("أرقام بدون أسماء ولا أرقام جوالات · جهازك وأجهزة الموظفين ما تنحسب", "Anonymous numbers, no names or phone numbers · your own and staff devices are not counted")}</p></div>
+      <div class="chips" id="visdays">${[7, 30, 90].map(x => html`<button type="button" class="chip" data-d="${x}">${L(`${x} يوم`, `${x} days`)}</button>`)}</div></div>
+      <div id="visbody"><p class="hint" style="margin:0">${L("نحمّل الأرقام…", "Loading the numbers…")}</p></div></div>
     <div class="card" style="margin-top:16px"><div class="row between"><div><h2>النسخ الاحتياطية</h2>
       <p class="hint">آخر نسخة: ${snaps[0] ? fmtDate(snaps[0].created_at) : "ما فيه بعد"} · تنحفظ نسخة تلقائية كل يوم على السيرفر، وكل تعديل مسجّل في السجل.</p></div>
       <a class="btn sm" href="#/backups">${ico("backup")} فتح</a></div></div>
     ${checks.length && can("site") ? html`<div class="card"><h2>قبل ما تفتح الموقع</h2><ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">${checks.map(c => html`<li>${c}</li>`)}</ul>
       <a class="btn sm" href="#/content" style="margin-top:10px">${ico("edit")} عدّل المحتوى</a></div>` : ""}`);
+  document.querySelectorAll("#visdays .chip").forEach(c => c.onclick = () => { visDays = +c.dataset.d; visCard(); });
+  visCard();
   if ($("#mt")) $("#mt").onclick = async e => {
     const turnOn = !m.on;
     if (!(await confirmBox(turnOn ? "تشغيل وضع الصيانة" : "فتح الموقع للزوار",
@@ -619,6 +700,95 @@ VIEWS.home = async el => {
     });
   };
 };
+
+/* ---------- visitors: anonymous counts sent by the public site (no names, no phone numbers) ---------- */
+let visDays = 30;
+const VIS_SRC = { direct: ["مباشر — كتب الرابط أو حافظه", "Direct — typed or saved the link"], qr: ["الكود المطبوع (QR)", "Printed QR code"],
+  instagram: ["إنستقرام", "Instagram"], google: ["بحث قوقل", "Google search"], tiktok: ["تيك توك", "TikTok"], facebook: ["فيسبوك", "Facebook"],
+  snapchat: ["سناب شات", "Snapchat"], other: ["مواقع ثانية", "Other websites"] };
+const VIS_CTA = { loyalty: ["بطاقة الولاء", "Loyalty card"], phone: ["اتصال بالمحل", "Call the shop"], instagram: ["إنستقرام", "Instagram"],
+  whatsapp: ["واتساب", "WhatsApp"], map: ["الموقع على الخريطة", "Map / directions"] };
+async function visCard() {
+  const box = $("#visbody"); if (!box) return;
+  const seq = visCard.seq = (visCard.seq || 0) + 1;
+  document.querySelectorAll("#visdays .chip").forEach(c => c.classList.toggle("on", +c.dataset.d === visDays));
+  box.style.opacity = ".5";
+  let d;
+  try { d = await api.rpc("site_stats", { p_days: visDays }); }
+  catch (e) {
+    if (seq !== visCard.seq || !box.isConnected) return;
+    box.style.opacity = "";
+    put(box, html`<p class="hint">${L("ما قدرنا نجيب أرقام الزوار الحين.", "Couldn't load the visitor numbers right now.")} <button class="btn sm" id="visagain">${L("حاول مرة ثانية", "Try again")}</button></p>`);
+    $("#visagain").onclick = visCard; return;
+  }
+  if (seq !== visCard.seq || !box.isConnected) return;
+  box.style.opacity = "";
+  const n = d.days, tot = d.total || {}, prev = d.prev || {}, loc = UI_LANG === "en" ? "en-GB" : "ar-AE";
+  const num = x => Number(x || 0).toLocaleString("en-US");
+  const day = (x, o) => new Date(x + "T12:00:00").toLocaleDateString(loc, o || { weekday: "short", day: "numeric", month: "short" });
+  if (!d.first) {
+    put(box, html`<p class="empty" style="margin:8px 0 0">${L("العدّ بدأ الحين — الأرقام تظهر هنا أول ما يدخل الزوار الموقع. جهازك وأجهزة الموظفين ما تنحسب.",
+      "Counting has just started — numbers appear here as soon as visitors open the site. Your own devices and staff devices are not counted.")}</p>`);
+    return;
+  }
+  const qr = ((d.src || []).find(x => x.src === "qr") || {}).people || 0;
+  const full = new Date(d.first + "T12:00:00") <= new Date(new Date(d.from + "T12:00:00") - n * 864e5);      // was the period before fully counted?
+  const ch = full && prev.visitors ? Math.round((tot.visitors - prev.visitors) / prev.visitors * 100) : null;
+  const delta = ch === null ? "" : html`<small class="vdelta ${ch > 0 ? "up" : ch < 0 ? "down" : ""}">${ch > 0 ? "▲" : ch < 0 ? "▼" : "●"} ${Math.abs(ch)}% ${L("عن الفترة اللي قبلها", "vs the period before")}</small>`;
+  const max = Math.max(1, ...d.by_day.map(x => x.v)), top = d.by_day.reduce((a, x) => x.v > a.v ? x : a, d.by_day[0]);
+  const base = tot.visitors ? `${L("أعلى يوم", "Busiest day")}: ${day(top.d)} · ${num(top.v)} ${L("زائر", "visitors")}` : L("ما فيه زيارات في هالفترة", "No visits in this period");
+  const bars = (rows, mx, cls) => html`<div class="vchart ${cls || ""} ${rows.length > 45 ? "dense" : ""}">${rows.map((x, i) => raw(`<i data-i="${i}" style="--h:${x.v ? Math.max(3, Math.round(x.v / mx * 100)) : 0}%"></i>`))}</div>`;
+  const list = (rows, name, empty) => {
+    const mx = Math.max(1, ...rows.map(r => r.people));
+    return rows.length ? rows.map(r => html`<div class="vrow" title="${num(r.taps ?? r.people)} ${L("ضغطة", "taps")}"><span class="vn"><bdi>${name(r)}</bdi></span><span class="vb"><i style="width:${Math.max(2, Math.round(r.people / mx * 100))}%"></i></span><b>${num(r.people)}</b></div>`)
+      : html`<p class="hint" style="margin:0">${empty}</p>`;
+  };
+  const nm = r => UI_LANG === "en" ? (r.name_en || r.name_ar) : (r.name_ar || r.name_en);
+  const deliv = (S.settings.home && S.settings.home.delivery) || [];
+  const ctaName = r => { const v = VIS_CTA[r.ref]; if (v) return L(v[0], v[1]); const x = deliv.find(q => String(q.en || "").toLowerCase() === r.ref); return x ? L(x.ar || x.en, x.en || x.ar) : r.ref; };
+  const srcName = r => { const v = VIS_SRC[r.src]; return v ? L(v[0], v[1]) : r.src; };
+  const hours = Array.from({ length: 24 }, (_, h) => ({ h, v: ((d.hours || []).find(x => x.h === h) || {}).v || 0 }));
+  const hmax = Math.max(1, ...hours.map(x => x.v)), htop = hours.reduce((a, x) => x.v > a.v ? x : a, hours[0]);
+  const hr = h => `${(h % 12) || 12} ${h < 12 ? L("ص", "AM") : L("م", "PM")}`;
+  const hbase = htop.v ? `${L("أكثر وقت", "Busiest time")}: ${hr(htop.h)}` : "";
+  const split = (o, names) => { const t = Object.values(o || {}).reduce((a, b) => a + b, 0); return t ? Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v], i) => html`${i ? " · " : ""}<bdi>${names[k] || k} ${Math.round(v / t * 100)}%</bdi>`) : "—"; };
+  put(box, html`
+    <div class="grid g4 vtiles">
+      <div class="stat"><b>${num((d.today || {}).visitors)}</b><span>${L("زائر اليوم", "Visitors today")}</span></div>
+      <div class="stat"><b>${num(tot.visitors)}</b><span>${L(`زائر في آخر ${n} يوم`, `Visitors in the last ${n} days`)}</span>${delta}</div>
+      <div class="stat"><b>${num(tot.views)}</b><span>${L("مرة انفتح الموقع", "Times the site was opened")}</span></div>
+      <div class="stat"><b>${num(qr)}</b><span>${L("جوا من الكود المطبوع (QR)", "Came from the printed QR code")}</span></div>
+    </div>
+    <h3 class="vh">${L("الزوار كل يوم", "Visitors per day")}</h3>
+    <p class="vread" id="vread1">${base}</p>
+    ${bars(d.by_day, max)}
+    <div class="vaxis"><span>${day(d.by_day[0].d, { day: "numeric", month: "short" })}</span>${d.by_day.length > 10 ? html`<span>${day(d.by_day[Math.floor(d.by_day.length / 2)].d, { day: "numeric", month: "short" })}</span>` : ""}<span>${day(d.by_day[d.by_day.length - 1].d, { day: "numeric", month: "short" })}</span></div>
+    <div class="grid g2 vcols">
+      <div><h3 class="vh">${L("أكثر الأصناف اللي ضغطوا عليها", "Most tapped items")}</h3><p class="hint vsub">${L("عدد الأشخاص اللي فتحوا الصنف أو صورته", "People who opened the item or its photo")}</p>
+        ${list(d.items || [], r => html`${nm(r)}${r.available ? "" : html` <span class="pill warn">${L("خلص", "Sold out")}</span>`}`, L("ما أحد ضغط على صنف في هالفترة.", "Nobody tapped an item in this period."))}</div>
+      <div><h3 class="vh">${L("أكثر الأقسام", "Most opened sections")}</h3><p class="hint vsub">${L("عدد الأشخاص اللي اختاروا القسم من الشريط", "People who picked the section from the bar")}</p>
+        ${list(d.cats || [], nm, L("ما فيه بيانات بعد.", "No data yet."))}</div>
+      <div><h3 class="vh">${L("من وين يجون", "Where visitors come from")}</h3><p class="hint vsub">${L("عدد الزوار من كل مصدر", "Visitors from each source")}</p>
+        ${list(d.src || [], srcName, L("ما فيه بيانات بعد.", "No data yet."))}</div>
+      <div><h3 class="vh">${L("ضغطات الأزرار", "Button taps")}</h3><p class="hint vsub">${L("التوصيل، الولاء، الاتصال، الخريطة…", "Delivery, loyalty, call, map…")}</p>
+        ${list(d.cta || [], ctaName, L("ما أحد ضغط على زر في هالفترة.", "Nobody tapped a button in this period."))}</div>
+    </div>
+    <h3 class="vh">${L("أوقات الزيارة (بتوقيت الإمارات)", "Visit times (UAE time)")}</h3>
+    <p class="vread" id="vread2">${hbase || " "}</p>
+    ${bars(hours, hmax, "sm")}
+    <div class="vaxis"><span>${hr(0)}</span><span>${hr(6)}</span><span>${hr(12)}</span><span>${hr(18)}</span><span>${hr(23)}</span></div>
+    <p class="hint vfoot">${L("الأجهزة", "Devices")}: ${split(d.dev, { m: L("جوال", "Phone"), d: L("كمبيوتر", "Computer") })}  ·  ${L("اللغة", "Language")}: ${split(d.lang, { ar: "عربي", en: "English" })}
+      ${(d.search || []).length ? html`<br>${L("كلمات بحثوا عنها", "Words they searched for")}: ${d.search.map((x, i) => html`${i ? L("، ", ", ") : ""}<bdi>${x.q}</bdi> (${num(x.people)})`)}` : ""}</p>`);
+  const hook = (chart, read, text, idle) => {
+    if (!chart) return;
+    const show = e => { const b = e.target.closest("i[data-i]"); chart.querySelectorAll("i.on").forEach(x => x.classList.remove("on")); if (!b) { read.textContent = idle; return; } b.classList.add("on"); read.textContent = text(+b.dataset.i); };
+    chart.addEventListener("pointerover", show); chart.addEventListener("click", show);
+    chart.addEventListener("pointerleave", e => { if (e.pointerType !== "mouse") return; chart.querySelectorAll("i.on").forEach(x => x.classList.remove("on")); read.textContent = idle; });   // on a phone the tapped day stays selected
+  };
+  const charts = box.querySelectorAll(".vchart");
+  hook(charts[0], $("#vread1"), i => { const x = d.by_day[i]; return `${day(x.d)} · ${num(x.v)} ${L("زائر", "visitors")} · ${num(x.p)} ${L("مرة انفتح الموقع", "opens")}`; }, base);
+  hook(charts[1], $("#vread2"), i => `${hr(hours[i].h)} · ${num(hours[i].v)} ${L("زيارة", "visits")}`, hbase || " ");
+}
 
 /* ---------- menu ---------- */
 let selCat = null;
