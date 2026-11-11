@@ -155,7 +155,8 @@ async function busy(btn, fn) {
 function errText(e) {
   const m = String((e && (e.message || e.msg || e.error_description)) || e || "");
   if (/42501|row-level security|permission denied|not allowed|Unauthorized/i.test(m)) return "ما عندك صلاحية لهذا الإجراء";
-  if (/Failed to fetch|NetworkError|network/i.test(m)) return "ما فيه اتصال بالسيرفر — تأكد من الإنترنت وحاول مرة ثانية";
+  if (/NET_TIMEOUT/.test(m)) return "الاتصال بطيء وما وصل رد من السيرفر — حاول مرة ثانية";
+  if (/Failed to fetch|NetworkError|network|Load failed|AbortError/i.test(m)) return "ما فيه اتصال بالسيرفر — تأكد من الإنترنت وحاول مرة ثانية";
   if (/violates foreign key|23503/i.test(m)) return "ما ينفع — فيه أصناف مرتبطة بهذا القسم. انقلها أو احذفها أول";
   if (/duplicate key|23505/i.test(m)) return "هذا المعرّف مستخدم من قبل";
   if (/payload too large|413|exceeded the maximum/i.test(m)) return "الملف كبير — أقصى حجم ٥٠ ميغا للوسائط و٢٠ للمستندات";
@@ -166,6 +167,18 @@ function errText(e) {
 /* ------------------------------------------------------------------
    Supabase client (auth, REST, RPC, storage) — no external library
 ------------------------------------------------------------------ */
+// Every request has a time limit: on a weak connection the panel shows a clear message
+// (and a retry button) instead of waiting forever.
+const NET_MS = window.PRESSIO_TIMEOUT || 20000;
+async function xfetch(url, opts = {}, ms = NET_MS) {
+  const ctrl = window.AbortController ? new AbortController() : null;
+  const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, ms);
+  try { return await fetch(url, ctrl ? { ...opts, signal: ctrl.signal } : opts); }
+  catch (e) { throw new Error(e && e.name === "AbortError" ? "NET_TIMEOUT" : "Failed to fetch"); }
+  finally { clearTimeout(timer); }
+}
+const isNetErr = e => /NET_TIMEOUT|Failed to fetch|\(5\d\d\)|\(429\)/.test(String(e && e.message));
+
 const api = {
   sess: null,
   remember: true,
@@ -188,7 +201,7 @@ const api = {
     this.save();
   },
   async signIn(email, password) {
-    const r = await fetch(`${C.url}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: C.key, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+    const r = await xfetch(`${C.url}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: C.key, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(/invalid/i.test(j.error_code || j.msg || j.error_description || "") ? "الإيميل أو كلمة السر غلط" : (j.msg || j.error_description || "تعذّر الدخول"));
     this.keep(j);
@@ -196,20 +209,27 @@ const api = {
   async token() {
     if (!this.sess) throw new Error("انتهت الجلسة");
     if (Date.now() < this.sess.exp - 60000) return this.sess.access;
-    const r = await fetch(`${C.url}/auth/v1/token?grant_type=refresh_token`, { method: "POST", headers: { apikey: C.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: this.sess.refresh }) });
-    if (!r.ok) { this.sess = null; this.save(); location.reload(); throw new Error("انتهت الجلسة — سجّل دخول مرة ثانية"); }
+    // one renewal at a time, shared by every request that is waiting for it
+    if (!this._renew) this._renew = this.renew().finally(() => { this._renew = null; });
+    return this._renew;
+  },
+  async renew() {
+    const r = await xfetch(`${C.url}/auth/v1/token?grant_type=refresh_token`, { method: "POST", headers: { apikey: C.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: this.sess.refresh }) });
+    // only a real "this session is no longer valid" answer signs you out; a server hiccup does not
+    if (r.status === 400 || r.status === 401 || r.status === 403) { this.sess = null; this.save(); loginView("انتهت الجلسة — سجّل دخول مرة ثانية"); throw new Error("انتهت الجلسة — سجّل دخول مرة ثانية"); }
+    if (!r.ok) throw new Error(`(${r.status}) server`);
     this.keep(await r.json());
     return this.sess.access;
   },
   async signOut() {
-    try { await fetch(`${C.url}/auth/v1/logout`, { method: "POST", headers: { apikey: C.key, Authorization: `Bearer ${this.sess && this.sess.access}` } }); } catch (e) {}
+    try { await xfetch(`${C.url}/auth/v1/logout`, { method: "POST", headers: { apikey: C.key, Authorization: `Bearer ${this.sess && this.sess.access}` } }, 6000); } catch (e) {}
     this.sess = null; this.save();
   },
   async req(path, { method = "GET", body, headers = {}, raw: rawBody = false, prefer } = {}) {
     const h = { apikey: C.key, Authorization: `Bearer ${await this.token()}`, ...headers };
     if (body !== undefined && !rawBody) h["Content-Type"] = "application/json";
     if (prefer) h.Prefer = prefer;
-    const r = await fetch(C.url + path, { method, headers: h, body: body === undefined ? undefined : (rawBody ? body : JSON.stringify(body)) });
+    const r = await xfetch(C.url + path, { method, headers: h, body: body === undefined ? undefined : (rawBody ? body : JSON.stringify(body)) }, rawBody ? 180000 : NET_MS);
     const text = await r.text();
     let j = null; try { j = text ? JSON.parse(text) : null; } catch (e) { j = text; }
     if (!r.ok) throw new Error(`(${r.status}) ` + ((j && (j.message || j.msg || j.error || j.hint)) || text || r.statusText));
@@ -460,7 +480,11 @@ async function route() {
     if (my !== navToken) return;
     await VIEWS[p.id](el);
     scrollTo(0, 0);
-  } catch (e) { console.error(e); put(el, html`<div class="banner bad">${errText(e)}</div>`); }
+  } catch (e) {
+    console.error(e); if (my !== navToken || !$("#page")) return;
+    put(el, html`<div class="banner bad">${errText(e)}</div><div class="row" style="margin-top:12px"><button class="btn" id="again">حاول مرة ثانية</button></div>`);
+    $("#again").onclick = route;
+  }
 }
 
 function loginView(msg = "") {
@@ -486,7 +510,7 @@ function loginView(msg = "") {
         try { api.remember ? localStorage.setItem("pressio_last_email", em) : localStorage.removeItem("pressio_last_email"); } catch (x) {}
         // ask the browser to save the password in its own secure password manager
         if (api.remember && window.PasswordCredential && navigator.credentials) {
-          try { await navigator.credentials.store(new PasswordCredential({ id: em, password: pw, name: em })); } catch (x) {}
+          try { navigator.credentials.store(new PasswordCredential({ id: em, password: pw, name: em })).catch(() => {}); } catch (x) {}
         }
         await start();
       }
@@ -506,11 +530,24 @@ function pendingView() {
   $("#lo").onclick = async () => { await api.signOut(); location.reload(); };
 }
 
+function retryView(msg) {
+  put($("#root"), html`<div class="login"><div class="login__box" style="text-align:center">
+    <span class="logo"></span><h1>ما قدرنا نوصل للسيرفر</h1>
+    <p class="sub" style="margin-top:8px">${msg}</p>
+    <button class="btn primary wide" id="rt" style="margin-top:14px">حاول مرة ثانية</button>
+    <p class="hint" style="margin-top:12px">أنت للحين مسجّل دخول — ما تحتاج تكتب كلمة السر.</p></div></div>`);
+  $("#rt").onclick = () => busy($("#rt"), start);
+}
+
 async function start() {
   api.load();
   if (!api.sess) return loginView();
   try { await loadMe(); }
-  catch (e) { api.sess = null; api.save(); return loginView(errText(e)); }
+  catch (e) {
+    if (!api.sess) return;                       // the session really ended: the sign-in screen is already up
+    if (isNetErr(e)) return retryView(errText(e));
+    api.sess = null; api.save(); return loginView(errText(e));
+  }
   if (!S.me || !S.me.active) return pendingView();
   shell();
   window.onhashchange = route;
@@ -1050,9 +1087,9 @@ async function docAI(file, kind, extra = {}) {
   const prep = await window.PressioInvoiceAI.prepare(file);
   let r;
   try {
-    r = await fetch(`${C.url}/functions/v1/doc-ai`, { method: "POST",
+    r = await xfetch(`${C.url}/functions/v1/doc-ai`, { method: "POST",
       headers: { apikey: C.key, Authorization: `Bearer ${await api.token()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, mime: prep.mime, data: prep.data, ...extra }) });
+      body: JSON.stringify({ kind, mime: prep.mime, data: prep.data, ...extra }) }, 60000);
   } catch (e) { throw new Error("net"); }
   const j = await r.json().catch(() => ({}));
   if (r.status === 404) throw new Error("no_fn");
@@ -1377,7 +1414,7 @@ const permList = (r) => r.role === "admin" ? html`<span class="pill ok">كل ش�
   ? html`${(r.perms || []).map(k => html`<span class="pill">${PERM_AR[k] || k}</span> `)}` : html`<span class="hint">بدون صلاحيات</span>`;
 
 async function staffAdmin(body) {
-  const r = await fetch(`${C.url}/functions/v1/staff-admin`, { method: "POST",
+  const r = await xfetch(`${C.url}/functions/v1/staff-admin`, { method: "POST",
     headers: { apikey: C.key, Authorization: `Bearer ${await api.token()}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw new Error(j.error || (r.status === 404 ? "خدمة إضافة المستخدمين مب مفعّلة بعد على السيرفر" : "تعذّر التنفيذ"));

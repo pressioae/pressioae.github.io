@@ -175,22 +175,34 @@
     setTimeout(function(){ if(!shown) snapshot().then(function(d){ if(!shown) show(d); }).catch(function(){}); }, 1500);
   }
 
-  /* ---------------- logo: tap = back to top; 5 quick taps = staff sign-in ---------------- */
-  var taps = 0, lastTap = 0;
-  document.addEventListener("click", function(e){
-    var lg = e.target.closest && e.target.closest(".brand, #maint .logo, .foot .logo");
-    if(!lg) return;
+  /* ---------------- logo: tap = back to top; 5 quick taps = staff sign-in ----------------
+     Taps are counted the moment the finger touches the logo (pointerdown / touchstart), not on
+     "click": phones drop click events while the page is still scrolling, which made the 5 taps unreliable. */
+  var taps = 0, lastTap = 0, lastDown = 0, going = false;
+  function logoOf(e){ return e.target && e.target.closest && e.target.closest(".brand, #maint .logo, .foot .logo"); }
+  function logoDown(e){
+    if(going || !logoOf(e)) return;
     var now = Date.now();
+    if(now - lastDown < 60) return;                 // pointerdown + touchstart of the same touch
+    lastDown = now;
     taps = (now - lastTap <= 2000) ? taps + 1 : 1;
     lastTap = now;
-    if(taps >= 5){ taps = 0; e.preventDefault(); location.href = "admin.html"; return; }
+    if(taps >= 5){ taps = 0; going = true; setTimeout(function(){ location.href = "admin.html"; }, 30); }
+  }
+  if(window.PointerEvent) document.addEventListener("pointerdown", logoDown, true);
+  else { document.addEventListener("touchstart", logoDown, {capture: true, passive: true}); document.addEventListener("mousedown", logoDown, true); }
+  document.addEventListener("click", function(e){
+    var lg = logoOf(e); if(!lg) return;
+    if(going){ e.preventDefault(); return; }
     if(lg.classList.contains("brand")){
       e.preventDefault();
       try{ history.replaceState(null, "", location.pathname + location.search); }catch(x){}
-      window.scrollTo({top: 0, behavior: "smooth"});
+      // jump (not glide) to the top: a running smooth scroll would eat the next taps
+      window.scrollTo({top: 0, behavior: taps > 1 ? "auto" : "smooth"});
       var bu = $("#burger"); if(bu && bu.getAttribute("aria-expanded") === "true") bu.click();
     }
   });
+  addEventListener("pageshow", function(){ going = false; taps = 0; });
 
   /* ---------------- photo viewer ----------------
      tap a photo → full screen. Above the photo: small photos of the same section
@@ -205,7 +217,7 @@
       (S.categories || []).forEach(function(c){
         var slides = [];
         (S.items || []).forEach(function(it){
-          if(it.c !== c.id) return;
+          if(it.c !== c.id || !shown(it)) return;
           (it.images || []).filter(src).forEach(function(id, k){
             if(it.id === wantId && k === 0){ pos = {g: groups.length, i: slides.length}; }
             slides.push({u: src(id), cap: L(it, "name"), sub: priceTxt(it.price)});
@@ -466,7 +478,7 @@
     $("#secchips").innerHTML = have.map(function(n){
       return '<a class="chip" href="#' + (n[0] === "top" ? "" : n[0]) + '" data-sec="' + n[0] + '">' + esc(t(n[1])) + '</a>';
     }).join("");
-    $("#chips").innerHTML = (S.categories || []).filter(function(c){ return (S.items || []).some(function(i){ return i.c === c.id; }); })
+    $("#chips").innerHTML = (S.categories || []).filter(function(c){ return (S.items || []).some(function(i){ return i.c === c.id && shown(i); }); })
       .map(function(c){ return '<a class="chip" href="#c-' + esc(c.id) + '" data-cat="' + esc(c.id) + '">' + esc(L(c, "name")) + '</a>'; }).join("");
     var hb = $("#sbhome"); hb.innerHTML = ICON_HOME; hb.setAttribute("aria-label", t("sections")); hb.title = t("sections");
     var sb = $("#sbsearch"); sb.innerHTML = ICON_SEARCH; sb.setAttribute("aria-label", t("search")); sb.title = t("search");
@@ -602,8 +614,11 @@
     return {ok:true};
   }
 
+  // an item the team switched off (sold out, or hidden for a while) is not shown to visitors at all
+  function shown(it){ return available(it).ok; }
+
   function secSignature(){
-    var list = (S.items || []).filter(function(i){ return i.featured && i.images && i.images.length && src(i.images[0]); });
+    var list = (S.items || []).filter(function(i){ return shown(i) && i.featured && i.images && i.images.length && src(i.images[0]); });
     if(!list.length) return "";
     var cards = list.map(function(i){
       return '<a class="sig" href="#menu" data-jump="' + esc(i.c) + '"><div class="sig__img">' + img(i.images[0], L(i, "name")) + '</div>'
@@ -626,7 +641,7 @@
     var nq = norm(q), out = "";
     (S.categories || []).forEach(function(c){
       var items = (S.items || []).filter(function(i){
-        if(i.c !== c.id) return false;
+        if(i.c !== c.id || !shown(i)) return false;
         if(!nq) return true;
         return norm(i.name_ar + " " + i.name_en + " " + i.desc_ar + " " + i.desc_en).indexOf(nq) >= 0;
       });
@@ -635,10 +650,10 @@
         ? '<span class="tag">' + esc(t("served") + " " + hourLabel(c.hours_from) + " – " + hourLabel(c.hours_to)) + '</span>' : "";
       out += '<div class="mcat" id="c-' + esc(c.id) + '"><div class="mcat__head"><h3>' + esc(L(c, "name")) + '</h3>' + hrs + '</div><div class="mitems">';
       items.forEach(function(i){
-        var a = available(i), pic = i.images && i.images[0] && src(i.images[0]);
-        out += '<div class="mi' + (pic ? " has-img" : "") + (a.ok ? "" : " is-off") + '">'
+        var pic = i.images && i.images[0] && src(i.images[0]);
+        out += '<div class="mi' + (pic ? " has-img" : "") + '">'
           + (pic ? '<div class="mi__img" data-lb="menu" data-id="' + esc(i.id) + '" role="button" tabindex="0" aria-label="' + esc(t("zoom") + " — " + L(i, "name")) + '">' + img(i.images[0], L(i, "name")) + (i.images.filter(src).length > 1 ? '<span class="mi__more">' + numAr(i.images.filter(src).length) + '</span>' : "") + '</div>' : "")
-          + '<div class="mi__name">' + esc(L(i, "name")) + (a.ok ? "" : '<span class="mi__note">' + esc(a.note) + '</span>') + '</div>'
+          + '<div class="mi__name">' + esc(L(i, "name")) + '</div>'
           + money(i.price)
           + (L(i, "desc") ? '<p class="mi__desc">' + esc(L(i, "desc")) + '</p>' : "")
           + '</div>';
