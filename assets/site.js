@@ -51,7 +51,13 @@
   }
   function store(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} }
   function read(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  // the owner can run the site in Arabic only, English only, or both (admin → site content → site language)
+  function onlyLang(){
+    var v = S && S.settings ? S.settings.langs : read("pressio_langs");
+    return v === "ar" || v === "en" ? v : "";
+  }
   function pickLang(){
+    var only = read("pressio_langs"); if(only === "ar" || only === "en") return only;
     var m = /[?&]lang=(ar|en)/.exec(location.search);
     if(m) return m[1];
     var s = read(LANG_KEY); if(s === "ar" || s === "en") return s;
@@ -512,6 +518,9 @@
 
   function render(){
     var st = S.settings || {}, home = st.home || {};
+    var only = onlyLang(), was = read("pressio_langs"); store("pressio_langs", only || null);
+    if(only) lang = only; else if(was) lang = pickLang();          // back to both languages → the visitor's own choice again
+    $("#lang").hidden = !!only;
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
     $("#lang").textContent = lang === "ar" ? "EN" : "ع";
@@ -886,8 +895,8 @@
       + '<h1>' + esc(L(m.title)) + '</h1><p>' + esc(L(m.body)) + '</p>'
       + '<div class="maint__links">' + d.map(function(x){ return '<a class="btn btn--ghost btn--sm" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(L(x)) + '</a>'; }).join("")
       + ((home.info || {}).ig ? '<a class="btn btn--ghost btn--sm" href="' + esc(igHref(home.info.ig)) + '" target="_blank" rel="noopener" dir="ltr">' + esc(home.info.ig) + '</a>' : "")
-      + '</div><div class="maint__lang"><button class="lang" type="button" id="mlang">' + (lang === "ar" ? "English" : "العربية") + '</button></div></div>';
-    $("#mlang").addEventListener("click", toggleLang);
+      + '</div>' + (onlyLang() ? "" : '<div class="maint__lang"><button class="lang" type="button" id="mlang">' + (lang === "ar" ? "English" : "العربية") + '</button></div>') + '</div>';
+    if($("#mlang")) $("#mlang").addEventListener("click", toggleLang);
     document.title = "pressio — " + L(m.title);
   }
 
@@ -908,6 +917,7 @@
 
   /* ---------------- chrome ---------------- */
   function toggleLang(){
+    if(onlyLang()) return;
     lang = lang === "ar" ? "en" : "ar"; store(LANG_KEY, lang);
     if(S) render();
   }

@@ -323,3 +323,20 @@ h3.lbl{margin:10px 0 2px;font-size:14px}
 .jobbar > i{display:block;height:4px;border-radius:4px;background:rgba(255,255,255,.2);margin-top:7px;overflow:hidden}
 .jobbar > i b{display:block;height:100%;width:0;background:#F8F3EC;border-radius:4px;transition:width .3s}
 @media (max-width:900px){.jobbar{bottom:calc(76px + env(safe-area-inset-bottom))}}
+
+/* gifts */
+.gcode{flex:1;min-width:150px;max-width:240px;font-family:"Jost",ui-monospace,monospace;font-size:18px;letter-spacing:.14em;text-transform:uppercase;text-align:center}
+.gres{margin-top:12px;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+.gres.ok{border-color:#C7D2C2}.gres.done{border-color:#C7D2C2;background:#EEF3EC}.gres.used{background:#F5F0EA}.gres.bad{border-color:#E7C3BD;background:#FBEFED}
+.gres__t{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gres__s{margin:6px 0 10px;font-size:14px;color:var(--ink-2)}
+.gres.done .gres__s{color:var(--ok);font-weight:600;margin-bottom:0}
+.glist{display:grid;gap:12px}
+.gcard{border:1px solid var(--line-soft);border-radius:14px;padding:14px 16px;background:#fff}
+.gcard .gt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+.gnums{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--ink-2)}
+.gnums b{font-size:16px;font-weight:500;color:var(--ink)}
+.gcodes{max-height:min(52vh,460px);overflow:auto}
+.gcodes td,.gcodes th{white-space:nowrap}
+/* phone: the dark top bar keeps its own height on short pages (it used to stretch) */
+@media (max-width:900px){.app{grid-template-rows:auto 1fr}}
