@@ -872,13 +872,17 @@ VIEWS.scan = async el => {
     if (g.status === "ok") {
       cls = "is-ok";
       h = html`${big("ok")}<p class="vstate">${L("صالحة", "Valid")}</p>${giftInfo(g)}
-        <p class="vsub">${max > 1 ? giftLeft(left, max) : L("ما انستخدمت", "Not used yet")}${g.expires_on ? ` · ${L("صالحة لين", "valid until")} ${giftDay(g.expires_on)}` : ""}</p>
+        <p class="vsub">${max > 1 ? giftLeft(left, max) + (g.once_per_day ? ` · ${L("مرة في اليوم", "once a day")}` : "") : L("ما انستخدمت", "Not used yet")}${g.expires_on ? ` · ${L("صالحة لين", "valid until")} ${giftDay(g.expires_on)}` : ""}</p>
         ${redeemer ? html`<button type="button" class="btn vgo" id="v-redeem">${L("تأكيد الاستخدام", "Confirm redemption")}</button>` : ""}
         ${hist(g)}<button type="button" class="btn ghost wide vnext" id="v-next">${L("إلغاء", "Cancel")}</button>`;
     } else if (g.status === "done") {
       cls = "is-done";
       h = html`${big("ok", "solid")}<p class="vstate">${L("تم الاستخدام ✓", "Redeemed ✓")}</p>${giftInfo(g)}
-        <p class="vsub">${max > 1 ? (left > 0 ? giftLeft(left, max) : L("هذي كانت آخر مرة", "That was the last use")) : L("الكود صار مستخدم", "The code is now used")}</p>${nextBtn}`;
+        <p class="vsub">${max > 1 ? (left > 0 ? giftLeft(left, max) + (g.once_per_day ? ` · ${L("المرة الجاية بكرة", "next use tomorrow")}` : "") : L("هذي كانت آخر مرة", "That was the last use")) : L("الكود صار مستخدم", "The code is now used")}</p>${nextBtn}`;
+    } else if (g.status === "today") {
+      h = html`${big("clock")}<p class="vstate">${L("انستخدمت اليوم", "Already used today")}</p>${giftInfo(g)}
+        <p class="vsub">${L("مسموح مرة وحدة في اليوم — يقدر يستخدمها بكرة", "Allowed once a day — it can be used again tomorrow")} · ${giftLeft(left, max)}</p>
+        ${hist(g)}${mgr ? html`<button type="button" class="btn sm" id="v-undo">${L("تراجع عن آخر استخدام", "Undo last use")}</button>` : ""}${nextBtn}`;
     } else if (g.status === "used") {
       h = html`${big("x")}<p class="vstate">${L("مستخدمة", "Already used")}</p>${giftInfo(g)}
         <p class="vsub">${max > 1 ? L(`انستخدمت كل المرات (${max})`, `All ${max} uses are used`) : L("انستخدمت من قبل", "It was used before")}${g.redeemed_at && !(g.history || []).length ? ` · ${giftWhen(g.redeemed_at)}${g.by ? " · " + g.by : ""}` : ""}</p>
@@ -996,7 +1000,7 @@ VIEWS.gifts = async el => {
           const left = g.total - g.used, st = !g.active ? ["موقوفة", "Paused", "warn"] : g.expired ? ["منتهية", "Expired", "bad"] : ["شغّالة", "Active", "ok"];
           return html`<div class="gcard" data-g="${g.id}">
             <div class="row between"><div class="gt">${g.image ? html`<img class="gthumb" src="${g.image}" alt="" style="object-position:${GIFT_POS[g.image_pos] || GIFT_POS.center}">` : html`<span class="gthumb gthumb--ic">${ico("gift")}</span>`}
-                <b>${giftName(g)}</b> <span class="pill">${giftKind(g)}</span>${g.max_uses > 1 ? html` <span class="pill">${L(`كل كود × ${g.max_uses} مرات`, `${g.max_uses} uses per code`)}</span>` : ""} <span class="pill ${st[2]}">${L(st[0], st[1])}</span></div>
+                <b>${giftName(g)}</b> <span class="pill">${giftKind(g)}</span>${g.max_uses > 1 ? html` <span class="pill">${L(`كل كود × ${g.max_uses} مرات`, `${g.max_uses} uses per code`)}${g.once_per_day ? L(" · مرة في اليوم", " · once a day") : ""}</span>` : ""} <span class="pill ${st[2]}">${L(st[0], st[1])}</span></div>
               <div class="row">
                 <button class="btn sm" data-ga="preview">${ico("eye")} ${L("معاينة", "Preview")}</button>
                 <button class="btn sm" data-ga="codes">${L("الأكواد والروابط", "Codes & links")}</button>
@@ -1027,7 +1031,8 @@ VIEWS.gifts = async el => {
       </div>
       <div class="grid g3">
         <div class="f"><label>${L("كم مرة ينستخدم كل كود؟", "How many times can each code be used?")}</label><input type="number" name="max_uses" class="num" min="1" max="100" inputmode="numeric" value="${g.max_uses || 1}">
-          <small>${L("1 = مرة وحدة. مثلاً 5 لبطاقة «5 قهاوي».", "1 = once. For example 5 for a “5 coffees” card.")}</small></div>
+          <small>${L("1 = مرة وحدة. مثلاً 5 لبطاقة «5 قهاوي».", "1 = once. For example 5 for a “5 coffees” card.")}</small>
+          <label class="check" data-daily style="margin-top:6px"><input type="checkbox" name="once_per_day" ${g.once_per_day === false ? "" : "checked"}> ${L("مرة وحدة في اليوم بس", "Only once a day")}</label></div>
         <div class="f"><label>${L("آخر يوم صالحة فيه — اختياري", "Last valid day — optional")}</label><input type="date" name="expires_on" value="${g.expires_on || ""}"></div>
         ${g.id ? "" : html`<div class="f"><label>${L("كم كود (ستيكر) تبي؟", "How many codes (stickers)?")}</label><input type="number" name="count" class="num" min="1" max="500" inputmode="numeric" value="10"></div>`}
       </div>
@@ -1052,8 +1057,8 @@ VIEWS.gifts = async el => {
       put(pv, src ? html`<img src="${src}" alt="" style="object-position:${pos}">` : html`<span class="gimg__def">${ico("gift")}<small>${L("الشكل الافتراضي", "Default look")}</small></span>`);
       rm.hidden = !src; $("[data-upl]", f).textContent = src ? L("تغيير الصورة", "Change photo") : L("رفع صورة", "Upload photo");
     };
-    const sync = () => { $("[data-pct]", f).hidden = f.kind.value !== "discount"; };
-    f.kind.onchange = sync; sync();
+    const sync = () => { $("[data-pct]", f).hidden = f.kind.value !== "discount"; $("[data-daily]", f).hidden = !(Number(f.max_uses.value) > 1); };
+    f.kind.onchange = sync; f.max_uses.oninput = sync; sync();
     f.image_pos.onchange = paint;
     f.imgfile.onchange = () => {
       const file = f.imgfile.files[0]; if (!file) return;
@@ -1072,7 +1077,7 @@ VIEWS.gifts = async el => {
     let ar = f.title_ar.value.trim(), en = f.title_en.value.trim();
     if (!ar && !en) { if (kind === "discount") { ar = `خصم ${pct}%`; en = `${pct}% off`; } else { toast(L("اكتب اسم الهدية", "Enter the gift name"), "bad"); return null; } }
     return { kind, percent: kind === "discount" ? pct : null, title_ar: ar, title_en: en, note_ar: f.note_ar.value.trim(), note_en: f.note_en.value.trim(),
-      expires_on: f.expires_on.value || null, max_uses: uses, image_pos: f.image_pos.value };
+      expires_on: f.expires_on.value || null, max_uses: uses, once_per_day: f.once_per_day.checked, image_pos: f.image_pos.value };
   };
   const saveImage = async (f, row) => {      // uploads the new header photo (if one was chosen) into the Library → "gifts" folder
     const st = f._img;
