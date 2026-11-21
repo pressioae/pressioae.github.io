@@ -54,6 +54,8 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
 .btn{display:flex;align-items:center;justify-content:center;min-height:50px;padding:0 22px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#F8F3EC;text-decoration:none;font:inherit;font-size:15.5px;font-weight:500;cursor:pointer}
 .btn.ghost{background:transparent;color:var(--ink)}
 .foot{font-size:12.5px;color:var(--muted);text-align:center;margin-top:4px}
+.btn.staff{background:var(--clay);border-color:var(--clay);color:#fff}
+.slink{display:block;text-align:center;font-size:12.5px;color:var(--muted);text-decoration:underline;text-underline-offset:3px;padding:6px 0}
 .spin{width:34px;height:34px;margin:26px auto;border-radius:50%;border:3px solid rgba(63,50,43,.15);border-top-color:var(--ink);animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
@@ -105,7 +107,8 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
           done: "بالعافية!", doneSub: "تم استخدام هديتك", doneLeft: function(l){ return "باقي لك " + l + (l === 1 ? " مرة" : " مرات"); },
           expired: "انتهت مدة هالهدية", expiredSub: "كانت صالحة لين ", paused: "هالهدية غير مفعّلة حالياً", pausedSub: "اسأل الموظف أو جرّب بعدين.",
           none: "ما لقينا هالكود", noneSub: "تأكد من الرابط أو اسأل الموظف.", err: "ما قدرنا نتصل", errSub: "تأكد من الإنترنت وحاول مرة ثانية.", again: "حاول مرة ثانية",
-          prev: "معاينة: هذا شكل الصفحة عند العميل (ما تنحسب زيارة)", back: "رجوع للوحة", foot: "Q1 مول، الورقاء" },
+          prev: "معاينة: هذا شكل الصفحة عند العميل (ما تنحسب زيارة)", back: "رجوع للوحة", foot: "Q1 مول، الورقاء",
+          staffBtn: "للموظف: تحقق وأكّد الاستخدام", staffLink: "للموظفين: تحقق وأكّد" },
     en: { title: "Your gift", k: "Your gift from pressio", kd: "A special discount from pressio", how: "Show this to the barista when you order — they'll scan it to confirm your gift", exp: "Valid until ", menu: "See the menu",
           left: function(l, m){ return l + " of " + m + " uses left"; }, daily: "once a day",
           today: "You've used your gift today", todaySub: "It can be used once a day — see you tomorrow",
@@ -113,7 +116,8 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
           done: "Enjoy!", doneSub: "Your gift has been redeemed", doneLeft: function(l){ return l + (l === 1 ? " use" : " uses") + " left"; },
           expired: "This gift has expired", expiredSub: "It was valid until ", paused: "This gift is not active right now", pausedSub: "Ask the barista or try again later.",
           none: "We couldn't find this code", noneSub: "Check the link or ask the barista.", err: "Couldn't connect", errSub: "Check your internet and try again.", again: "Try again",
-          prev: "Preview: this is what the customer sees (not counted as a visit)", back: "Back to the panel", foot: "Q1 Mall, Al Warqa" }
+          prev: "Preview: this is what the customer sees (not counted as a visit)", back: "Back to the panel", foot: "Q1 Mall, Al Warqa",
+          staffBtn: "Staff: verify & confirm", staffLink: "Staff: verify & confirm" }
   };
   var ICON = {
     gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM3 7h18v4H3zM12 7v14M12 7S10.5 3 8 3a2 2 0 0 0 0 4zM12 7s1.5-4 4-4a2 2 0 0 1 0 4z"/></svg>',
@@ -193,6 +197,13 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
     }
     if(preview && staff) btns += '<a class="btn ghost" href="../admin.html#/gifts">' + t.back + '</a>';
     btns = '<a class="btn' + (btns ? " ghost" : "") + '" href="../?s=gift#menu">' + t.menu + '</a>' + btns;
+    // Staff whose phone isn't signed in to the panel in THIS browser (e.g. the sticker opened Safari but they signed in elsewhere):
+    // a way into the verify screen — it asks them to sign in once, then checks this code straight away.
+    var verify = "../admin.html#/scan?c=" + encodeURIComponent((g && g.code) || code);
+    if(code && !preview && state !== "none" && state !== "err"){
+      if(staff) btns = '<a class="btn staff" href="' + verify + '">' + t.staffBtn + '</a>' + btns;
+      else btns += '<a class="slink" href="' + verify + '">' + t.staffLink + '</a>';
+    }
     $("#wrap").innerHTML = '<div class="card pop ' + cls + '" data-state="' + state + '">' + h + '</div><div class="btns">' + btns + '<p class="foot">' + t.foot + '</p></div>';
     var a = $("#again"); if(a) a.onclick = function(){ load(false); };
   }
