@@ -980,6 +980,35 @@ VIEWS.scan = async el => {
   if (pre) { $("#v-code").value = giftPretty(pre); check(pre); }
 };
 
+/* ---- who confirmed what: every use is logged with the staff member's name (undoing a use removes it) ---- */
+async function giftWho(box, groups) {
+  if (!box) return;
+  let rows;
+  try { rows = await api.select("gift_redemptions", "select=at,by,by_name,code,gift_codes(batch_id)&order=at.desc&limit=5000"); }
+  catch (e) { put(box, html`<h2>${L("تأكيدات الموظفين", "Confirmations by staff")}</h2><p class="hint" style="margin:0">${errText(e)}</p>`); return; }
+  if (!box.isConnected) return;
+  const day = d => new Date(d).toLocaleDateString("en-CA", { timeZone: C.tz });
+  const today = day(Date.now()), d7 = day(Date.now() - 6 * 864e5), d30 = day(Date.now() - 29 * 864e5);
+  const per = new Map();
+  rows.forEach(r => {
+    const k = r.by || r.by_name || "?", x = per.get(k) || { name: r.by_name || "—", today: 0, w: 0, m: 0, all: 0, last: r.at };
+    const d = day(r.at); x.all++; if (d === today) x.today++; if (d >= d7) x.w++; if (d >= d30) x.m++;
+    per.set(k, x);
+  });
+  const list = [...per.values()].sort((a, b) => b.m - a.m || b.all - a.all);
+  const gname = id => { const g = groups.find(x => x.id === id); return g ? giftName(g) : "—"; };
+  const recent = rows.slice(0, 40);
+  put(box, html`<div class="row between"><h2>${L("تأكيدات الموظفين", "Confirmations by staff")}</h2>
+      ${rows.length ? html`<button type="button" class="btn sm" id="g-whorec">${L("آخر التأكيدات", "Latest confirmations")}</button>` : ""}</div>
+    <p class="hint">${L("كم هدية أكّد كل موظف (بتوقيت الإمارات). لو تراجعت عن استخدام، ينشال من العدد.", "How many gifts each staff member confirmed (UAE time). Undoing a use removes it from the count.")}</p>
+    ${list.length ? html`<div class="tbl-wrap"><table class="gwho"><thead><tr><th>${L("الموظف", "Staff")}</th><th>${L("اليوم", "Today")}</th><th>${L("آخر 7 أيام", "Last 7 days")}</th><th>${L("آخر 30 يوم", "Last 30 days")}</th><th>${L("الكل", "All time")}</th><th>${L("آخر تأكيد", "Last confirmed")}</th></tr></thead>
+        <tbody>${list.map(x => html`<tr><td><b data-notr>${x.name}</b></td><td class="num">${x.today}</td><td class="num">${x.w}</td><td class="num">${x.m}</td><td class="num"><b>${x.all}</b></td><td class="hint">${giftWhen(x.last)}</td></tr>`)}</tbody></table></div>`
+      : html`<p class="empty" style="padding:14px 0">${L("ما أحد أكّد هدية بعد.", "No gift has been confirmed yet.")}</p>`}`);
+  if ($("#g-whorec")) $("#g-whorec").onclick = () => modal(L("آخر التأكيدات", "Latest confirmations"), html`<div data-notr class="tbl-wrap gcodes"><table><thead><tr><th>${L("الوقت", "When")}</th><th>${L("الموظف", "Staff")}</th><th>${L("الهدية", "Gift")}</th><th>${L("الكود", "Code")}</th></tr></thead>
+      <tbody>${recent.map(r => html`<tr><td>${giftWhen(r.at)}</td><td>${r.by_name || "—"}</td><td>${gname(r.gift_codes && r.gift_codes.batch_id)}</td><td class="num">${giftPretty(r.code)}</td></tr>`)}</tbody></table></div>`,
+    { wide: true, submit: "", cancel: L("إغلاق", "Close") });
+}
+
 /* ---- groups (owner / managers) ---- */
 const GIFT_POS = { top: "50% 0%", center: "50% 50%", bottom: "50% 100%" };
 VIEWS.gifts = async el => {
@@ -994,6 +1023,7 @@ VIEWS.gifts = async el => {
     <div class="card gstaff"><div class="row between"><div><h2>${L("رابط التحقق للموظفين", "Verify link for staff")}</h2>
       <p class="hint" style="margin:0">${L("الموظف يفتحه من جواله ويسجّل دخول مرة وحدة (مع «تذكّرني») — بعدها يفتح على صفحة التحقق مباشرة. لازم تعطيه صلاحية «تأكيد الهدايا» من صفحة الفريق.", "Staff open it on their phone and sign in once (with “Remember me”) — after that it opens straight on the verify screen. Give them the “Confirm gifts” permission on the Team page.")}</p></div>
       <div class="row"><span class="num gscan">${scanLink()}</span><button type="button" class="btn sm" id="g-copyscan">${L("نسخ", "Copy")}</button></div></div></div>
+    <div class="card" id="g-who"><h2>${L("تأكيدات الموظفين", "Confirmations by staff")}</h2><p class="hint" style="margin:0">${L("نحمّل…", "Loading…")}</p></div>
     <div class="card"><h2>${L("المجموعات", "Groups")}</h2>
       <p class="hint">${L("كل مجموعة = فكرة (خصم أو هدية) ولها عدد من الأكواد. مثال: «خصم 20%» × 30 كود، أو «5 قهاوي» × 10 أكواد كل واحد ينستخدم 5 مرات.", "Each group is one idea (a discount or a gift) with a number of codes. Example: “20% off” × 30 codes, or “5 coffees” × 10 codes usable 5 times each.")}</p>
       ${groups.length ? html`<div class="glist">${groups.map(g => {
@@ -1014,6 +1044,7 @@ VIEWS.gifts = async el => {
             ${giftNote(g) || g.expires_on ? html`<p class="hint" style="margin:8px 0 0">${giftNote(g)}${giftNote(g) && g.expires_on ? " · " : ""}${g.expires_on ? `${L("صالحة لين", "Valid until")} ${giftDay(g.expires_on)}` : ""}</p>` : ""}
           </div>`; })}</div>`
         : html`<p class="empty">${L("ما فيه مجموعات بعد — اضغط «مجموعة جديدة» وسوِّ أول هدية.", "No groups yet — press “New group” to make the first gift.")}</p>`}</div></div>`);
+  giftWho($("#g-who"), groups);
   $("#g-copyscan").onclick = () => copyText(new URL("scan", location.href).href, L("انتسخ رابط التحقق", "Verify link copied"));
 
   const form = g => html`<div class="grid" data-notr>
