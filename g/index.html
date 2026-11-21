@@ -99,14 +99,16 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
   function esc(v){ return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
   var T = {
     ar: { title: "هديتك", k: "هديتك من pressio", kd: "خصم خاص لك من pressio", how: "ورِّ هالكود للموظف عند الطلب، يمسحه ويأكد هديتك", exp: "صالحة لين ", menu: "شوف المنيو",
-          left: function(l, m){ return "باقي " + l + " من " + m + " مرات"; },
+          left: function(l, m){ return "باقي " + l + " من " + m + " مرات"; }, daily: "مرة وحدة في اليوم",
+          today: "استخدمت هديتك اليوم", todaySub: "تنستخدم مرة وحدة في اليوم — ترجع لك بكرة",
           used: "هالهدية انستخدمت", usedAll: function(m){ return "انستخدمت كل المرات (" + m + ")"; }, usedOn: "آخر استخدام: ", usedSub: "ننتظرك على قهوة ثانية!",
           done: "بالعافية!", doneSub: "تم استخدام هديتك", doneLeft: function(l){ return "باقي لك " + l + (l === 1 ? " مرة" : " مرات"); },
           expired: "انتهت مدة هالهدية", expiredSub: "كانت صالحة لين ", paused: "هالهدية غير مفعّلة حالياً", pausedSub: "اسأل الموظف أو جرّب بعدين.",
           none: "ما لقينا هالكود", noneSub: "تأكد من الرابط أو اسأل الموظف.", err: "ما قدرنا نتصل", errSub: "تأكد من الإنترنت وحاول مرة ثانية.", again: "حاول مرة ثانية",
           prev: "معاينة: هذا شكل الصفحة عند العميل (ما تنحسب زيارة)", back: "رجوع للوحة", foot: "Q1 مول، الورقاء" },
     en: { title: "Your gift", k: "Your gift from pressio", kd: "A special discount from pressio", how: "Show this to the barista when you order — they'll scan it to confirm your gift", exp: "Valid until ", menu: "See the menu",
-          left: function(l, m){ return l + " of " + m + " uses left"; },
+          left: function(l, m){ return l + " of " + m + " uses left"; }, daily: "once a day",
+          today: "You've used your gift today", todaySub: "It can be used once a day — see you tomorrow",
           used: "This gift has been used", usedAll: function(m){ return "All " + m + " uses have been used"; }, usedOn: "Last used on ", usedSub: "See you for the next coffee!",
           done: "Enjoy!", doneSub: "Your gift has been redeemed", doneLeft: function(l){ return l + (l === 1 ? " use" : " uses") + " left"; },
           expired: "This gift has expired", expiredSub: "It was valid until ", paused: "This gift is not active right now", pausedSub: "Ask the barista or try again later.",
@@ -116,7 +118,8 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
   var ICON = {
     gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM3 7h18v4H3zM12 7v14M12 7S10.5 3 8 3a2 2 0 0 0 0 4zM12 7s1.5-4 4-4a2 2 0 0 1 0 4z"/></svg>',
     ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
-    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01"/></svg>'
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'
   };
   var q = new URLSearchParams(location.search);
   var code = (q.get("c") || location.hash.replace(/^#/, "")).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
@@ -166,12 +169,15 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
     var body = (g.kind === "discount" && g.percent ? '<p class="pct">' + esc(g.percent) + '%</p>' : "") + '<h1>' + title + '</h1>' + (note ? '<p class="note">' + note + '</p>' : "");
     if(state === "ok"){
       h = top + '<p class="k">' + (g.kind === "discount" ? t.kd : t.k) + '</p>' + body
-        + (max > 1 ? '<p class="left">' + esc(t.left(left, max)) + '</p>' : "")
+        + (max > 1 ? '<p class="left">' + esc(t.left(left, max)) + (g.once_per_day ? " · " + t.daily : "") + '</p>' : "")
         + '<div class="how"><div class="qr">' + qrSvg(link(g.code)) + '</div><div><p>' + t.how + '</p><span class="code">' + esc(pretty(g.code)) + '</span>'
         + (g.expires_on ? '<p class="exp">' + t.exp + esc(day(g.expires_on)) + '</p>' : "") + '</div></div>';
     } else if(state === "done"){
       cls = "is-done"; h = '<div class="ic">' + ICON.ok + '</div><h1>' + t.done + '</h1><p class="note">' + t.doneSub + (title ? ' — ' + title : "") + '</p>'
         + (left > 0 ? '<p class="left">' + esc(t.doneLeft(left)) + '</p>' : "");
+    } else if(state === "today"){
+      cls = "is-warn"; h = '<div class="ic">' + ICON.clock + '</div><p class="k">' + title + '</p><h1>' + t.today + '</h1><p class="note">' + t.todaySub + '</p>'
+        + (left > 0 ? '<p class="left">' + esc(t.left(left, max)) + '</p>' : "");
     } else if(state === "used"){
       cls = "is-used"; h = (hero || '<div class="ic">' + ICON.ok + '</div>') + '<p class="k">' + title + '</p><h1>' + (max > 1 ? esc(t.usedAll(max)) : t.used) + '</h1><p class="note">'
         + (g.redeemed_at ? t.usedOn + esc(day(g.redeemed_at)) + '\n' : "") + t.usedSub + '</p>';
@@ -202,7 +208,7 @@ h1{font-size:clamp(1.45rem,4.8svh,2.2rem);line-height:1.3;font-weight:600;margin
       if(used && (was === "ok" || was === "done")){
         st = "done";
         clearTimeout(back);
-        if(g.status === "ok") back = setTimeout(function(){ show("ok"); }, 9000);     // more uses left → back to the gift after a moment
+        if(g.status === "ok" || g.status === "today") back = setTimeout(function(){ show(g.status); }, 9000);     // uses left → after a moment show the gift (or "come back tomorrow")
       }
       if(quiet && !used && (st === was || was === "done")) return;
       show(st);
