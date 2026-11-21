@@ -491,7 +491,7 @@ const PAGES = [
   { id: "content", t: "محتوى الموقع", i: "content", ok: () => can("site") },
   { id: "invoices", t: "الفواتير", i: "inv", ok: () => can("inv_upload") || can("inv_review") || can("view_all") },
   { id: "reports", t: "التقرير اليومي", i: "rep", ok: () => can("inv_upload") || can("reports") || can("view_all") },
-  { id: "scan", t: L("التحقق", "Verify"), i: "scan", ok: () => can("gifts") || can("site") },
+  { id: "scan", t: L("التحقق", "Verify"), i: "scan", ok: () => !!role() },
   { id: "gifts", t: L("الهدايا", "Gifts"), i: "gift", ok: () => can("site") || can("view_all") },
   { id: "backups", t: "النسخ والسجل", i: "backup", ok: () => can("site") || can("backups") || can("view_all") },
   { id: "hr", t: "الموظفين", i: "id", ok: () => can("hr") },
@@ -654,7 +654,7 @@ VIEWS.home = async el => {
       can("inv_upload") ? card("#/reports", "rep", "التقرير اليومي", "سجّل مبيعات اليوم وعدّة الدرج قبل ما تسكّر.") : "",
       can("reports") && !can("inv_upload") ? card("#/reports", "rep", "التقارير اليومية", "تقارير كل الفريق.") : "",
       can("stock") ? card("#/menu", "clock", "صنف خلص؟", "أوقفه أو أخفه لمدة — يرجع للمنيو تلقائياً.") : "",
-      can("gifts") ? card("#/scan", "scan", L("التحقق من هدية", "Verify a gift"), L("العميل معه هدية؟ امسح الكود أو الستيكر وأكّد الاستخدام.", "Customer has a gift? Scan the code or sticker and confirm.")) : ""
+      card("#/scan", "scan", L("التحقق من هدية", "Verify a gift"), L("العميل معه هدية؟ امسح الكود أو الستيكر وأكّد الاستخدام.", "Customer has a gift? Scan the code or sticker and confirm."))
     ].filter(Boolean);
     put(el, html`${head("أهلاً " + name, ROLE_AR[S.me.role] + " · اختر وش تبي تسوي")}
       <div class="grid g2">${cards.length ? cards : html`<p class="empty">ما عندك صلاحيات بعد — كلّم المالك.</p>`}</div>`);
@@ -855,7 +855,6 @@ VIEWS.scan = async el => {
         ? L("ستيكر NFC: اضغط «قراءة ستيكر NFC» وقرّب الجوال من الستيكر.", "NFC sticker: press “Read NFC sticker” and hold the phone to the sticker.")
         : L("ستيكر NFC على الآيفون: قرّب الجوال من الستيكر واضغط الإشعار — تنفتح هالصفحة وتتحقق لحالها (لازم تكون مسجّل دخول في Safari).", "NFC sticker on iPhone: hold the phone to the sticker and tap the notification — this page opens and checks it by itself (you must be signed in in Safari).")}</p>
     </div></div>`);
-  if (!redeemer) put($("#v-box"), html`<div class="banner warn">${L("ما عندك صلاحية «تأكيد الهدايا» — كلّم المالك.", "You don't have the “Confirm gifts” permission — ask the owner.")}</div>`);
   const box = $("#v-box");
   const icon = { ok: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', x: '<path d="M7 7l10 10M17 7 7 17"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', pause: '<path d="M9 6v12M15 6v12"/>', q: '<path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 17h.01"/>', scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/>' };
   const big = (name, cls) => raw(`<span class="vic ${cls || ""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon[name]}</svg></span>`);
@@ -873,7 +872,8 @@ VIEWS.scan = async el => {
       cls = "is-ok";
       h = html`${big("ok")}<p class="vstate">${L("صالحة", "Valid")}</p>${giftInfo(g)}
         <p class="vsub">${max > 1 ? giftLeft(left, max) + (g.once_per_day ? ` · ${L("مرة في اليوم", "once a day")}` : "") : L("ما انستخدمت", "Not used yet")}${g.expires_on ? ` · ${L("صالحة لين", "valid until")} ${giftDay(g.expires_on)}` : ""}</p>
-        ${redeemer ? html`<button type="button" class="btn vgo" id="v-redeem">${L("تأكيد الاستخدام", "Confirm redemption")}</button>` : ""}
+        ${redeemer ? html`<button type="button" class="btn vgo" id="v-redeem">${L("تأكيد الاستخدام", "Confirm redemption")}</button>`
+          : html`<p class="banner warn vperm">${L("ما عندك صلاحية «تأكيد الهدايا» — اطلب من المالك يفعّلها لك من صفحة الفريق.", "You don't have the “Confirm gifts” permission — ask the owner to turn it on for you on the Team page.")}</p>`}
         ${hist(g)}<button type="button" class="btn ghost wide vnext" id="v-next">${L("إلغاء", "Cancel")}</button>`;
     } else if (g.status === "done") {
       cls = "is-done";
@@ -976,7 +976,7 @@ VIEWS.scan = async el => {
     } catch (err) { toast(L("ما قدرنا نشغّل قراءة NFC — فعّل NFC في الجوال", "Couldn't start NFC reading — turn NFC on in the phone"), "bad"); }
   };
   idle();
-  if (!redeemer) put(box, html`<div class="banner warn">${L("ما عندك صلاحية «تأكيد الهدايا» — كلّم المالك.", "You don't have the “Confirm gifts” permission — ask the owner.")}</div>`);
+  if (!redeemer) box.insertAdjacentHTML("beforeend", out(html`<p class="banner warn vperm">${L("تقدر تتحقق من الهدايا، بس التأكيد يحتاج صلاحية «تأكيد الهدايا» من المالك.", "You can check gifts, but confirming needs the “Confirm gifts” permission from the owner.")}</p>`));
   if (pre) { $("#v-code").value = giftPretty(pre); check(pre); }
 };
 
@@ -1160,6 +1160,9 @@ VIEWS.gifts = async el => {
 };
 
 /* ---------- menu ---------- */
+// menu names follow the panel language: English panel → English names first (Arabic underneath), Arabic panel → the other way round
+const nameOf = o => o ? (UI_LANG === "en" ? (o.name_en || o.name_ar) : (o.name_ar || o.name_en)) || "" : "";
+const nameOther = o => { if (!o) return ""; const a = UI_LANG === "en" ? o.name_ar : o.name_en; return a && a !== nameOf(o) ? a : ""; };
 let selCat = null;
 VIEWS.menu = async el => {
   if (!selCat || !S.cats.find(c => c.id === selCat)) selCat = S.cats[0] && S.cats[0].id;
@@ -1172,16 +1175,16 @@ VIEWS.menu = async el => {
       ed ? html`<button class="btn" id="add-cat">${ico("plus")} قسم جديد</button><button class="btn primary" id="add-it" ${cat ? "" : "disabled"}>${ico("plus")} صنف جديد</button>` : "")}
     <div class="menu-ed">
       <div class="card" style="padding:10px"><div class="cats">${S.cats.map(c => html`<div class="cat ${c.id === selCat ? "on" : ""} ${c.visible ? "" : "hid"}" data-c="${c.id}">
-          <b>${c.name_ar || c.name_en}</b><small class="num">${S.items.filter(i => i.category_id === c.id).length}</small></div>`)}</div></div>
+          <b data-notr>${nameOf(c)}</b><small class="num">${S.items.filter(i => i.category_id === c.id).length}</small></div>`)}</div></div>
       <div class="card">${cat ? html`
-        <div class="row between" style="margin-bottom:10px"><div><h2>${cat.name_ar} <span class="muted" style="font-weight:400">· ${cat.name_en}</span></h2>
+        <div class="row between" style="margin-bottom:10px"><div><h2><bdi data-notr>${nameOf(cat)}</bdi>${nameOther(cat) ? html` <span class="muted" style="font-weight:400">· <bdi data-notr>${nameOther(cat)}</bdi></span>` : ""}</h2>
           <p class="hint">${cat.hours_from != null ? `يُقدّم من ${cat.hours_from}:00 إلى ${cat.hours_to}:00 · ` : ""}${cat.visible ? "ظاهر للزوار" : "مخفي عن الزوار"}</p></div>
           ${ed ? html`<div class="row"><button class="btn icon" data-cm="up" title="تحريك لفوق">${ico("up")}</button><button class="btn icon" data-cm="down" title="تحريك لتحت">${ico("down")}</button>
           <button class="btn sm" data-cm="edit">${ico("edit")} تعديل القسم</button></div>` : ""}</div>
         <div class="items">${items.length ? items.map((i, n) => html`<div class="it ${i.available && !snoozed(i) ? "" : "off"}" data-i="${i.id}">
-            <div class="it__img">${thumb(i.images && i.images[0], i.name_ar)}</div>
-            <div class="it__t"><b>${i.name_ar || i.name_en}${i.featured ? " ★" : ""}${i.hidden ? " · مخفي" : ""}</b>
-              <span>${i.name_en}${snoozed(i) ? " · يرجع " + fmtDate(i.snooze_until) : !i.available ? " · غير متوفر" : ""}</span></div>
+            <div class="it__img">${thumb(i.images && i.images[0], nameOf(i))}</div>
+            <div class="it__t"><b><bdi data-notr>${nameOf(i)}</bdi>${i.featured ? " ★" : ""}${i.hidden ? html` · <bdi>مخفي</bdi>` : ""}</b>
+              <span>${nameOther(i) ? html`<bdi data-notr>${nameOther(i)}</bdi>` : ""}${snoozed(i) ? html`${nameOther(i) ? " · " : ""}<bdi>${"يرجع " + fmtDate(i.snooze_until)}</bdi>` : !i.available ? html`${nameOther(i) ? " · " : ""}<bdi>غير متوفر</bdi>` : ""}</span></div>
             <input class="price-in num" type="number" min="0" step="0.5" value="${i.price}" data-price aria-label="السعر" ${ed ? "" : "disabled"}>
             <div class="it__acts"><label class="switch" title="متوفر"><input type="checkbox" data-av ${i.available ? "checked" : ""} ${st ? "" : "disabled"}></label>
               ${st ? html`<button class="btn icon" data-snz title="إخفاء لمدة">${ico("clock")}</button>` : ""}
@@ -1257,7 +1260,7 @@ function editCat(cat, el) {
   const del = $("#del-cat");
   if (del) del.onclick = async () => {
     if (count) return toast(`القسم فيه ${count} صنف — انقلهم أو احذفهم أول`, "bad");
-    if (!(await confirmBox("حذف القسم", `تحذف «${cat.name_ar}»؟ تقدر ترجعه من السجل.`))) return;
+    if (!(await confirmBox("حذف القسم", `تحذف «${nameOf(cat)}»؟ تقدر ترجعه من السجل.`))) return;
     await busy(null, async () => { await api.remove("categories", `id=eq.${enc(cat.id)}`); S.cats = S.cats.filter(x => x.id !== cat.id); selCat = null; toast("انحذف", "ok"); VIEWS.menu(el); });
   };
 }
@@ -1272,7 +1275,7 @@ function snoozeUntil(v) {
 }
 function snoozeItem(it, el) {
   const on = it.snooze_until && new Date(it.snooze_until) > new Date();
-  modal("إخفاء «" + (it.name_ar || it.name_en) + "» لمدة", html`
+  modal("إخفاء «" + nameOf(it) + "» لمدة", html`
     ${on ? html`<p class="banner warn">مخفي حالياً لين ${fmtDate(it.snooze_until)}</p>` : ""}
     <p class="hint">الصنف يختفي من المنيو للزوار، ويرجع لحاله بعد المدة — ما يحتاج أحد يرجعه.</p>
     <div class="f"><label>المدة</label><select name="d">
@@ -1294,7 +1297,7 @@ function editItem(item, el) {
     <div class="bi"><div class="f"><label>الوصف بالعربي</label><textarea name="desc_ar">${it.desc_ar}</textarea></div>
       <div class="f"><label>الوصف بالإنجليزي</label><textarea name="desc_en" dir="ltr">${it.desc_en}</textarea></div></div>
     <div class="bi"><div class="f"><label>السعر (${S.settings.cur?.ar || "درهم"})</label><input type="number" name="price" min="0" step="0.5" value="${it.price}" class="num"></div>
-      <div class="f"><label>القسم</label><select name="category_id">${S.cats.map(c => html`<option value="${c.id}" ${c.id === it.category_id ? "selected" : ""}>${c.name_ar}</option>`)}</select></div></div>
+      <div class="f"><label>القسم</label><select name="category_id">${S.cats.map(c => html`<option value="${c.id}" ${c.id === it.category_id ? "selected" : ""} data-notr>${nameOf(c)}</option>`)}</select></div></div>
     <div class="f"><span class="lbl">الصور — الأولى هي الرئيسية</span><div class="thumbs" id="thumbs"></div></div>
     <div class="row"><label class="check"><input type="checkbox" name="available" ${it.available ? "checked" : ""}> متوفر</label>
       <label class="check"><input type="checkbox" name="featured" ${it.featured ? "checked" : ""}> ضمن «المفضّلة عندنا»</label>
@@ -1334,7 +1337,7 @@ function editItem(item, el) {
   };
   const del = $("#del-it");
   if (del) del.onclick = async () => {
-    if (!(await confirmBox("حذف الصنف", `تحذف «${item.name_ar || item.name_en}»؟ تقدر ترجعه من السجل.`))) return;
+    if (!(await confirmBox("حذف الصنف", `تحذف «${nameOf(item)}»؟ تقدر ترجعه من السجل.`))) return;
     await busy(null, async () => { await api.remove("items", `id=eq.${enc(item.id)}`); S.items = S.items.filter(x => x.id !== item.id); toast("انحذف", "ok"); dlg().close(); VIEWS.menu(el); });
   };
 }
@@ -1886,7 +1889,7 @@ VIEWS.backups = async el => {
   ]);
   const TBL = { items: "صنف", categories: "قسم", settings: "محتوى الموقع", media: "ملف", staff: "الفريق", invoices: "فاتورة", reports: "تقرير", snapshots: "نسخة" };
   const ACT = { INSERT: ["إضافة", "ok"], UPDATE: ["تعديل", ""], DELETE: ["حذف", "bad"], RESTORE: ["استرجاع", "warn"] };
-  const label = h => { const d = h.new_data || h.old_data || {}; return d.name_ar || d.name_en || d.full_name || d.alt_ar || d.supplier || (d.report_date ? "يوم " + d.report_date : "") || d.note || (h.table_name === "settings" ? "" : h.row_id); };
+  const label = h => { const d = h.new_data || h.old_data || {}; return (d.name_ar || d.name_en ? nameOf(d) : "") || d.full_name || d.alt_ar || d.supplier || (d.report_date ? "يوم " + d.report_date : "") || d.note || (h.table_name === "settings" ? "" : h.row_id); };
   put(el, html`${head("النسخ الاحتياطية والسجل", "نسخة تلقائية كل يوم على السيرفر (تنحفظ ٦٠ يوم)، وتقدر تحفظ نسخة يدوية قبل أي تعديل كبير. تحتاج بس متصفح — ما يحتاج جهازك.")}
     <div class="card"><div class="row">
       ${can("backups") || can("site") ? html`<button class="btn primary" id="snap">${ico("backup")} احفظ نسخة الآن</button>` : html`<span class="hint">عرض فقط</span>`}
