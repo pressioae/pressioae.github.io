@@ -98,6 +98,9 @@ const slug = s => String(s || "").trim().toLowerCase().replace(/[^\p{L}\p{N}]+/g
 
 const I = {
   home: '<path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
+  nfc: '<path d="M6 8.5a5 5 0 0 1 0 7M9.5 6a9 9 0 0 1 0 12M13 3.5a13 13 0 0 1 0 17"/>',
   gift: '<path d="M4 11h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM3 7h18v4H3zM12 7v14M12 7S10.5 3 8 3a2 2 0 0 0 0 4zM12 7s1.5-4 4-4a2 2 0 0 1 0 4z"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   media: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
@@ -270,6 +273,7 @@ const isEditor = () => can("site");
 const ROLE_AR = { admin: "المالك", manager: "مدير المشروع", accountant: "المحاسب", staff: "موظف" };
 const PERMS = [
   ["view_all", "اطلاع على كل شي", "يشوف المنيو والفواتير والتقارير والسجل — بدون تعديل"],
+  ["gifts", "تأكيد الهدايا", "يفتح صفحة التحقق، يمسح كود العميل أو ستيكر الهدية ويأكد الاستخدام"],
   ["inv_upload", "رفع الفواتير والتقرير اليومي", "يرفع فاتورة أو تقرير، ويشوف اللي رفعه هو"],
   ["inv_review", "مراجعة الفواتير واعتمادها", "يشوف كل الفواتير ويقبلها أو يرفضها"],
   ["reports", "كل التقارير اليومية", "يشوف تقارير كل الفريق"],
@@ -282,7 +286,7 @@ const PERM_AR = Object.fromEntries(PERMS.map(p => [p[0], p[1]]));
 const ROLE_PRESET = {
   manager: ["view_all", "reports", "hr"],
   accountant: ["inv_review", "reports", "inv_upload"],
-  staff: ["inv_upload", "stock"],
+  staff: ["inv_upload", "stock", "gifts"],
   admin: []
 };
 
@@ -487,7 +491,8 @@ const PAGES = [
   { id: "content", t: "محتوى الموقع", i: "content", ok: () => can("site") },
   { id: "invoices", t: "الفواتير", i: "inv", ok: () => can("inv_upload") || can("inv_review") || can("view_all") },
   { id: "reports", t: "التقرير اليومي", i: "rep", ok: () => can("inv_upload") || can("reports") || can("view_all") },
-  { id: "gifts", t: L("الهدايا", "Gifts"), i: "gift", ok: () => !!role() },
+  { id: "scan", t: L("التحقق", "Verify"), i: "scan", ok: () => can("gifts") || can("site") },
+  { id: "gifts", t: L("الهدايا", "Gifts"), i: "gift", ok: () => can("site") || can("view_all") },
   { id: "backups", t: "النسخ والسجل", i: "backup", ok: () => can("site") || can("backups") || can("view_all") },
   { id: "hr", t: "الموظفين", i: "id", ok: () => can("hr") },
   { id: "team", t: "الفريق", i: "team", ok: () => isAdmin() }
@@ -649,7 +654,7 @@ VIEWS.home = async el => {
       can("inv_upload") ? card("#/reports", "rep", "التقرير اليومي", "سجّل مبيعات اليوم وعدّة الدرج قبل ما تسكّر.") : "",
       can("reports") && !can("inv_upload") ? card("#/reports", "rep", "التقارير اليومية", "تقارير كل الفريق.") : "",
       can("stock") ? card("#/menu", "clock", "صنف خلص؟", "أوقفه أو أخفه لمدة — يرجع للمنيو تلقائياً.") : "",
-      card("#/gifts", "gift", L("تأكيد هدية", "Redeem a gift"), L("العميل معه ستيكر هدية؟ سوِّ له تاب أو اكتب الكود وأكّد الاستخدام.", "Customer has a gift sticker? Tap it or type the code and confirm."))
+      can("gifts") ? card("#/scan", "scan", L("التحقق من هدية", "Verify a gift"), L("العميل معه هدية؟ امسح الكود أو الستيكر وأكّد الاستخدام.", "Customer has a gift? Scan the code or sticker and confirm.")) : ""
     ].filter(Boolean);
     put(el, html`${head("أهلاً " + name, ROLE_AR[S.me.role] + " · اختر وش تبي تسوي")}
       <div class="grid g2">${cards.length ? cards : html`<p class="empty">ما عندك صلاحيات بعد — كلّم المالك.</p>`}</div>`);
@@ -794,84 +799,219 @@ async function visCard() {
 }
 
 /* ---------- gifts & discounts: one random code per NFC sticker / QR ----------
-   The customer taps a sticker → pressio.ae/g/?c=CODE shows the gift. Staff confirm it here once; after that the link says "used". */
+   The customer taps a sticker → pressio.ae/g/?c=CODE shows the gift (with a QR the barista scans).
+   Staff confirm it on the verify screen (#/scan, short link pressio.ae/scan). A code can be used 1–100 times (set per group). */
 const giftLink = code => new URL("g/?c=" + code, location.href).href;
+const scanLink = () => new URL("scan", location.href).href.replace(/^https?:\/\//, "");
 const giftPretty = c => c && c.length === 8 ? c.slice(0, 4) + "-" + c.slice(4) : (c || "");
 const giftClean = v => String(v || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 const giftKind = g => g.kind === "discount" ? `${L("خصم", "Discount")} ${g.percent || ""}%` : L("هدية", "Gift");
 const giftName = g => UI_LANG === "en" ? (g.title_en || g.title_ar) : (g.title_ar || g.title_en);
 const giftNote = g => UI_LANG === "en" ? (g.note_en || g.note_ar) : (g.note_ar || g.note_en);
 const giftDay = d => d ? new Date(String(d).length <= 10 ? d + "T12:00:00" : d).toLocaleDateString(UI_LANG === "en" ? "en-GB" : "ar-AE", { day: "numeric", month: "short", year: "numeric", timeZone: C.tz }) : "";
+const giftWhen = d => d ? new Date(d).toLocaleString(UI_LANG === "en" ? "en-GB" : "ar-AE", { timeZone: C.tz, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
+const giftLeft = (left, max) => L(`باقي ${left} من ${max}`, `${left} of ${max} left`);
 const copyText = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg, "ok"); } catch (e) { toast(L("ما قدرنا ننسخ — انسخها يدوياً", "Couldn't copy — copy it by hand"), "bad"); } };
+// reads a gift code out of whatever was scanned: a gift link, a panel link, or the bare 8-character code
+const giftFromText = s => {
+  s = String(s || "").trim();
+  const m = /[?&#]c=([A-Za-z0-9-]{8,12})/.exec(s); if (m) return giftClean(m[1]).slice(0, 8);
+  const k = giftClean(s); return /^[A-Z2-9]{8}$/.test(k) ? k : "";
+};
+const loadScript = src => new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("script")); document.head.appendChild(s); });
 
-VIEWS.gifts = async el => {
-  const mgr = can("site"), seeAll = mgr || can("view_all");
-  const groups = seeAll ? await api.rpc("gift_summary") : [];
+/* ---- verify screen for the counter (Arabic / English) ---- */
+const CAM = { stream: null, timer: 0, det: null, mode: "", nfc: null };
+function stopCam() {
+  clearTimeout(CAM.timer); CAM.timer = 0;
+  if (CAM.stream) { CAM.stream.getTracks().forEach(t => t.stop()); CAM.stream = null; }
+  const v = $("#v-video"); if (v) v.srcObject = null;
+  const box = $("#v-cam"); if (box) box.hidden = true;
+  const b = $("#v-camb"); if (b) b.hidden = false;
+}
+function stopNfc() { if (CAM.nfc) { try { CAM.nfc.abort(); } catch (e) {} CAM.nfc = null; } }
+window.addEventListener("hashchange", () => { stopCam(); stopNfc(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") stopCam(); });
+
+VIEWS.scan = async el => {
+  const mgr = can("site"), redeemer = can("gifts") || mgr;
   const pre = giftClean((/[?&]c=([A-Za-z0-9-]+)/.exec(location.hash) || [])[1]);
+  if (pre) history.replaceState(null, "", location.pathname + "#/scan");
+  const hasNfc = "NDEFReader" in window;
+  put(el, html`<div data-notr class="vpage">
+    ${head(L("التحقق من الهدايا", "Verify gifts"), L("امسح كود العميل أو ستيكر الهدية، أو اكتب الكود", "Scan the customer's code or the gift sticker, or type the code"), raw(langBtn("vlang")))}
+    <div class="vbox is-idle" id="v-box" aria-live="polite"></div>
+    <div class="card vtools">
+      <div class="vcam" id="v-cam" hidden><video id="v-video" playsinline muted autoplay></video><i class="vcam__frame" aria-hidden="true"></i>
+        <p class="vcam__msg" id="v-cammsg">${L("وجّه الكاميرا على كود العميل", "Point the camera at the customer's code")}</p>
+        <button type="button" class="btn sm vcam__x" id="v-camx">${L("إغلاق الكاميرا", "Close camera")}</button></div>
+      <div class="vbtns">
+        <button type="button" class="btn primary vbig" id="v-camb">${ico("camera")} ${L("افتح الكاميرا وامسح", "Open camera & scan")}</button>
+        ${hasNfc ? html`<button type="button" class="btn vbig" id="v-nfc">${ico("nfc")} ${L("قراءة ستيكر NFC", "Read NFC sticker")}</button>` : ""}
+      </div>
+      <form class="row vform" id="v-form"><input type="text" id="v-code" class="gcode" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="200" placeholder="ABCD-2345" aria-label="${L("كود الهدية", "Gift code")}">
+        <button class="btn" type="submit">${L("تحقق", "Check")}</button></form>
+      <p class="hint vtip">${hasNfc
+        ? L("ستيكر NFC: اضغط «قراءة ستيكر NFC» وقرّب الجوال من الستيكر.", "NFC sticker: press “Read NFC sticker” and hold the phone to the sticker.")
+        : L("ستيكر NFC على الآيفون: قرّب الجوال من الستيكر واضغط الإشعار — تنفتح هالصفحة وتتحقق لحالها (لازم تكون مسجّل دخول في Safari).", "NFC sticker on iPhone: hold the phone to the sticker and tap the notification — this page opens and checks it by itself (you must be signed in in Safari).")}</p>
+    </div></div>`);
+  if (!redeemer) put($("#v-box"), html`<div class="banner warn">${L("ما عندك صلاحية «تأكيد الهدايا» — كلّم المالك.", "You don't have the “Confirm gifts” permission — ask the owner.")}</div>`);
+  const box = $("#v-box");
+  const icon = { ok: '<path d="m5 12.5 4.5 4.5L19 7.5"/>', x: '<path d="M7 7l10 10M17 7 7 17"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', pause: '<path d="M9 6v12M15 6v12"/>', q: '<path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 17h.01"/>', scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/>' };
+  const big = (name, cls) => raw(`<span class="vic ${cls || ""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon[name]}</svg></span>`);
+  const idle = () => {
+    box.className = "vbox is-idle";
+    put(box, html`${big("scan")}<p class="vstate">${L("جاهز", "Ready")}</p><p class="vsub">${L("امسح كود العميل أو ستيكر الهدية، أو اكتب الكود تحت", "Scan the customer's code or the gift sticker, or type the code below")}</p>`);
+  };
+  const giftInfo = g => html`<div class="vgift"><b>${giftName(g)}</b> <span class="pill">${giftKind(g)}</span>${g.code ? html` <span class="num vcode">${giftPretty(g.code)}</span>` : ""}</div>${giftNote(g) ? html`<p class="vnote">${giftNote(g)}</p>` : ""}`;
+  const hist = g => (g.history || []).length ? html`<ul class="vhist">${g.history.map(h => html`<li>${giftWhen(h.at)}${h.by ? " · " + h.by : ""}</li>`)}</ul>` : "";
+  const nextBtn = html`<button type="button" class="btn wide vnext" id="v-next">${CAM.mode === "cam" ? ico("camera") : ""} ${L("تحقق من هدية ثانية", "Check another gift")}</button>`;
+  const show = g => {
+    const max = g.max_uses || 1, left = g.left == null ? max : g.left;
+    let cls = "is-bad", h;
+    if (g.status === "ok") {
+      cls = "is-ok";
+      h = html`${big("ok")}<p class="vstate">${L("صالحة", "Valid")}</p>${giftInfo(g)}
+        <p class="vsub">${max > 1 ? giftLeft(left, max) : L("ما انستخدمت", "Not used yet")}${g.expires_on ? ` · ${L("صالحة لين", "valid until")} ${giftDay(g.expires_on)}` : ""}</p>
+        ${redeemer ? html`<button type="button" class="btn vgo" id="v-redeem">${L("تأكيد الاستخدام", "Confirm redemption")}</button>` : ""}
+        ${hist(g)}<button type="button" class="btn ghost wide vnext" id="v-next">${L("إلغاء", "Cancel")}</button>`;
+    } else if (g.status === "done") {
+      cls = "is-done";
+      h = html`${big("ok", "solid")}<p class="vstate">${L("تم الاستخدام ✓", "Redeemed ✓")}</p>${giftInfo(g)}
+        <p class="vsub">${max > 1 ? (left > 0 ? giftLeft(left, max) : L("هذي كانت آخر مرة", "That was the last use")) : L("الكود صار مستخدم", "The code is now used")}</p>${nextBtn}`;
+    } else if (g.status === "used") {
+      h = html`${big("x")}<p class="vstate">${L("مستخدمة", "Already used")}</p>${giftInfo(g)}
+        <p class="vsub">${max > 1 ? L(`انستخدمت كل المرات (${max})`, `All ${max} uses are used`) : L("انستخدمت من قبل", "It was used before")}${g.redeemed_at && !(g.history || []).length ? ` · ${giftWhen(g.redeemed_at)}${g.by ? " · " + g.by : ""}` : ""}</p>
+        ${hist(g)}${mgr ? html`<button type="button" class="btn sm" id="v-undo">${L("تراجع عن آخر استخدام", "Undo last use")}</button>` : ""}${nextBtn}`;
+    } else if (g.status === "expired") {
+      h = html`${big("clock")}<p class="vstate">${L("منتهية", "Expired")}</p>${giftInfo(g)}<p class="vsub">${L("كانت صالحة لين", "It was valid until")} ${giftDay(g.expires_on)}</p>${nextBtn}`;
+    } else if (g.status === "paused") {
+      h = html`${big("pause")}<p class="vstate">${L("موقوفة", "Paused")}</p>${giftInfo(g)}<p class="vsub">${L("المجموعة موقوفة من اللوحة — ما تنستخدم الحين", "This group is paused in the panel — it can't be used now")}</p>${nextBtn}`;
+    } else {
+      h = html`${big("q")}<p class="vstate">${L("كود غير موجود", "Code not found")}</p><p class="vsub">${L("تأكد من الحروف أو امسح مرة ثانية", "Check the letters or scan again")}</p>${nextBtn}`;
+    }
+    box.className = "vbox " + cls; put(box, h);
+    try { navigator.vibrate && navigator.vibrate(cls === "is-bad" ? [80, 60, 80] : 60); } catch (e) {}
+    box.scrollIntoView({ block: "start", behavior: "smooth" });
+    if ($("#v-redeem")) $("#v-redeem").onclick = e => busy(e.target, async () => {
+      const r = await api.rpc("gift_redeem", { p_code: g.code });
+      show({ ...g, ...r, history: r.status === "done" ? [] : g.history });
+    });
+    if ($("#v-undo")) $("#v-undo").onclick = async e => {
+      if (!(await confirmBox(L("تراجع عن آخر استخدام", "Undo last use"), L("بنرجّع مرة وحدة للكود ويقدر العميل يستخدمها. متأكد؟", "One use goes back to the code and the customer can use it again. Are you sure?"), { danger: false, yes: L("تراجع", "Undo"), cancel: L("إلغاء", "Cancel") }))) return;
+      await busy(e.target, async () => { await api.rpc("gift_unredeem", { p_code: g.code }); await check(g.code); });
+    };
+    if ($("#v-next")) $("#v-next").onclick = () => { idle(); $("#v-code").value = ""; if (CAM.mode === "cam" && g.status !== "ok") openCam(); };
+  };
+  const check = async k => {
+    k = giftFromText(k);
+    if (!k) { box.className = "vbox is-bad"; put(box, html`${big("q")}<p class="vstate">${L("الكود غير صحيح", "Invalid code")}</p><p class="vsub">${L("الكود 8 حروف وأرقام، مثل ABCD-2345", "The code is 8 letters and digits, like ABCD-2345")}</p>`); return; }
+    box.className = "vbox is-idle"; put(box, html`<div class="vspin" role="status"></div><p class="vsub">${L("نتحقق…", "Checking…")}</p>`);
+    try { show(await api.rpc("gift_view", { p_code: k, p_count: false })); }
+    catch (e) { box.className = "vbox is-bad"; put(box, html`${big("x")}<p class="vstate">${L("ما قدرنا نتحقق", "Couldn't check")}</p><p class="vsub">${errText(e)}</p><button type="button" class="btn wide" id="v-retry">${L("حاول مرة ثانية", "Try again")}</button>`); $("#v-retry").onclick = () => check(k); }
+  };
+
+  /* camera: the phone's own QR reader when it has one, otherwise a small built-in reader (assets/jsqr.js) */
+  async function openCam() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast(L("المتصفح ما يدعم الكاميرا — اكتب الكود", "This browser can't open the camera — type the code"), "bad"); return; }
+    stopCam(); CAM.mode = "cam";
+    const v = $("#v-video"), msg = $("#v-cammsg");
+    $("#v-cam").hidden = false; $("#v-camb").hidden = true; msg.textContent = L("نفتح الكاميرا…", "Opening the camera…");
+    try {
+      CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      v.srcObject = CAM.stream; await v.play();
+    } catch (e) {
+      stopCam();
+      toast(e && e.name === "NotAllowedError" ? L("ما سمحت للكاميرا — فعّلها من إعدادات المتصفح للموقع", "Camera permission was denied — allow it in the browser settings for this site") : L("ما قدرنا نفتح الكاميرا", "Couldn't open the camera"), "bad");
+      return;
+    }
+    msg.textContent = L("وجّه الكاميرا على كود العميل", "Point the camera at the customer's code");
+    if (!CAM.det && "BarcodeDetector" in window) { try { const f = await BarcodeDetector.getSupportedFormats(); if (f.includes("qr_code")) CAM.det = new BarcodeDetector({ formats: ["qr_code"] }); } catch (e) {} }
+    if (!CAM.det && !window.jsQR) { try { await loadScript("assets/jsqr.js?v=1"); } catch (e) { msg.textContent = L("ما قدرنا نحمّل قارئ الكود — اكتب الكود", "Couldn't load the code reader — type the code"); return; } }
+    const cv = document.createElement("canvas"), cx = cv.getContext("2d", { willReadFrequently: true });
+    let bad = 0;
+    const tick = async () => {
+      if (!CAM.stream || !v.isConnected) return stopCam();
+      let text = "";
+      try {
+        if (v.readyState >= 2 && v.videoWidth) {
+          if (CAM.det) { const r = await CAM.det.detect(v); text = r[0] && r[0].rawValue; }
+          else {
+            const s = Math.min(1, 720 / Math.max(v.videoWidth, v.videoHeight)); cv.width = Math.round(v.videoWidth * s); cv.height = Math.round(v.videoHeight * s);
+            cx.drawImage(v, 0, 0, cv.width, cv.height);
+            const r = window.jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height, { inversionAttempts: "attemptBoth" });
+            text = r && r.data;
+          }
+        }
+      } catch (e) {}
+      if (text) {
+        const k = giftFromText(text);
+        if (k) { stopCam(); $("#v-code").value = giftPretty(k); return check(k); }
+        if (++bad % 8 === 1) msg.textContent = L("هذا مب كود هدية من pressio", "That isn't a pressio gift code");
+      }
+      CAM.timer = setTimeout(tick, CAM.det ? 150 : 120);
+    };
+    tick();
+  }
+  $("#v-camb").onclick = openCam;
+  $("#v-camx").onclick = () => { stopCam(); CAM.mode = ""; };
+  $("#v-form").onsubmit = e => { e.preventDefault(); stopCam(); CAM.mode = "type"; check($("#v-code").value); };
+  if ($("#v-nfc")) $("#v-nfc").onclick = async e => {
+    stopNfc(); stopCam(); CAM.mode = "nfc";
+    try {
+      const ctl = new AbortController(), r = new NDEFReader(); CAM.nfc = ctl;
+      await r.scan({ signal: ctl.signal });
+      e.target.classList.add("on"); toast(L("قرّب الجوال من الستيكر", "Hold the phone to the sticker"), "ok");
+      r.onreading = ev => {
+        for (const rec of ev.message.records) {
+          let t = ""; try { t = new TextDecoder(rec.encoding || "utf-8").decode(rec.data); } catch (x) {}
+          const k = giftFromText(t); if (k) { $("#v-code").value = giftPretty(k); check(k); return; }
+        }
+        toast(L("الستيكر ما فيه كود هدية", "This sticker has no gift code"), "bad");
+      };
+    } catch (err) { toast(L("ما قدرنا نشغّل قراءة NFC — فعّل NFC في الجوال", "Couldn't start NFC reading — turn NFC on in the phone"), "bad"); }
+  };
+  idle();
+  if (!redeemer) put(box, html`<div class="banner warn">${L("ما عندك صلاحية «تأكيد الهدايا» — كلّم المالك.", "You don't have the “Confirm gifts” permission — ask the owner.")}</div>`);
+  if (pre) { $("#v-code").value = giftPretty(pre); check(pre); }
+};
+
+/* ---- groups (owner / managers) ---- */
+const GIFT_POS = { top: "50% 0%", center: "50% 50%", bottom: "50% 100%" };
+VIEWS.gifts = async el => {
+  const oldLink = (/[?&]c=([A-Za-z0-9-]+)/.exec(location.hash) || [])[1];
+  if (oldLink) { location.replace("#/scan?c=" + giftClean(oldLink)); return; }      // old links from the first version of the gift page
+  const mgr = can("site");
+  const groups = await api.rpc("gift_summary");
   const again = () => VIEWS.gifts(el);
   put(el, html`<div data-notr>${head(L("الهدايا والخصومات", "Gifts & discounts"),
-      L("كل ستيكر له كود عشوائي خاص — العميل يسوي تاب ويشوف هديته، والموظف يأكد الاستخدام مرة وحدة", "Every sticker has its own random code — the customer taps to see the gift, staff confirm it once"),
-      mgr ? html`<button class="btn primary" id="g-new">${ico("plus")} ${L("مجموعة جديدة", "New group")}</button>` : "")}
-    <div class="card"><h2>${L("تأكيد استخدام هدية", "Redeem a gift")}</h2>
-      <p class="hint">${L("سوِّ تاب على الستيكر بجوالك (وأنت داخل اللوحة) أو اكتب الكود اللي على شاشة العميل.", "Tap the sticker with your phone (while signed in) or type the code shown on the customer's screen.")}</p>
-      <form class="row" id="g-check"><input type="text" id="g-code" class="gcode" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="ABCD-2345" value="${giftPretty(pre)}" aria-label="${L("كود الهدية", "Gift code")}">
-        <button class="btn" type="submit">${L("تحقق", "Check")}</button></form>
-      <div id="g-res"></div></div>
-    ${seeAll ? html`<div class="card"><h2>${L("المجموعات", "Groups")}</h2>
-      <p class="hint">${L("كل مجموعة = فكرة (خصم أو هدية) ولها عدد من الأكواد. مثال: «خصم 20%» × 30 كود.", "Each group is one idea (a discount or a gift) with a number of codes. Example: “20% off” × 30 codes.")}</p>
+      L("كل ستيكر له كود عشوائي خاص — العميل يسوي تاب ويشوف هديته، والموظف يمسح الكود ويأكد الاستخدام", "Every sticker has its own random code — the customer taps to see the gift, staff scan it and confirm"),
+      html`<a class="btn" href="#/scan">${ico("scan")} ${L("صفحة التحقق", "Verify screen")}</a>${mgr ? html`<button class="btn primary" id="g-new">${ico("plus")} ${L("مجموعة جديدة", "New group")}</button>` : ""}`)}
+    <div class="card gstaff"><div class="row between"><div><h2>${L("رابط التحقق للموظفين", "Verify link for staff")}</h2>
+      <p class="hint" style="margin:0">${L("الموظف يفتحه من جواله ويسجّل دخول مرة وحدة (مع «تذكّرني») — بعدها يفتح على صفحة التحقق مباشرة. لازم تعطيه صلاحية «تأكيد الهدايا» من صفحة الفريق.", "Staff open it on their phone and sign in once (with “Remember me”) — after that it opens straight on the verify screen. Give them the “Confirm gifts” permission on the Team page.")}</p></div>
+      <div class="row"><span class="num gscan">${scanLink()}</span><button type="button" class="btn sm" id="g-copyscan">${L("نسخ", "Copy")}</button></div></div></div>
+    <div class="card"><h2>${L("المجموعات", "Groups")}</h2>
+      <p class="hint">${L("كل مجموعة = فكرة (خصم أو هدية) ولها عدد من الأكواد. مثال: «خصم 20%» × 30 كود، أو «5 قهاوي» × 10 أكواد كل واحد ينستخدم 5 مرات.", "Each group is one idea (a discount or a gift) with a number of codes. Example: “20% off” × 30 codes, or “5 coffees” × 10 codes usable 5 times each.")}</p>
       ${groups.length ? html`<div class="glist">${groups.map(g => {
           const left = g.total - g.used, st = !g.active ? ["موقوفة", "Paused", "warn"] : g.expired ? ["منتهية", "Expired", "bad"] : ["شغّالة", "Active", "ok"];
           return html`<div class="gcard" data-g="${g.id}">
-            <div class="row between"><div class="gt"><b>${giftName(g)}</b> <span class="pill">${giftKind(g)}</span> <span class="pill ${st[2]}">${L(st[0], st[1])}</span></div>
+            <div class="row between"><div class="gt">${g.image ? html`<img class="gthumb" src="${g.image}" alt="" style="object-position:${GIFT_POS[g.image_pos] || GIFT_POS.center}">` : html`<span class="gthumb gthumb--ic">${ico("gift")}</span>`}
+                <b>${giftName(g)}</b> <span class="pill">${giftKind(g)}</span>${g.max_uses > 1 ? html` <span class="pill">${L(`كل كود × ${g.max_uses} مرات`, `${g.max_uses} uses per code`)}</span>` : ""} <span class="pill ${st[2]}">${L(st[0], st[1])}</span></div>
               <div class="row">
+                <button class="btn sm" data-ga="preview">${ico("eye")} ${L("معاينة", "Preview")}</button>
                 <button class="btn sm" data-ga="codes">${L("الأكواد والروابط", "Codes & links")}</button>
                 ${mgr ? html`<button class="btn sm" data-ga="add">${ico("plus")} ${L("أكواد", "Codes")}</button>
                 <button class="btn sm" data-ga="edit">${ico("edit")} ${L("تعديل", "Edit")}</button>
                 <button class="btn sm" data-ga="toggle">${g.active ? L("إيقاف", "Pause") : L("تشغيل", "Resume")}</button>
                 <button class="btn sm danger" data-ga="del" aria-label="${L("حذف المجموعة", "Delete group")}">${ico("trash")}</button>` : ""}
               </div></div>
-            <div class="gnums"><span><b class="num">${g.total}</b> ${L("كود", "codes")}</span><span><b class="num">${g.seen}</b> ${L("انفتح", "opened")}</span><span><b class="num">${g.used}</b> ${L("مستخدم", "used")}</span><span><b class="num">${left}</b> ${L("باقي", "left")}</span></div>
+            <div class="gnums"><span><b class="num">${g.total}</b> ${L("كود", "codes")}</span><span><b class="num">${g.seen}</b> ${L("انفتح", "opened")}</span>${g.max_uses > 1 ? html`<span><b class="num">${g.redemptions}</b> ${L("مرة استخدام", "uses")}</span>` : ""}<span><b class="num">${g.used}</b> ${L("مستخدم بالكامل", "fully used")}</span><span><b class="num">${left}</b> ${L("باقي", "left")}</span></div>
             <div class="progress"><i style="width:${g.total ? Math.round(g.used / g.total * 100) : 0}%"></i></div>
             ${giftNote(g) || g.expires_on ? html`<p class="hint" style="margin:8px 0 0">${giftNote(g)}${giftNote(g) && g.expires_on ? " · " : ""}${g.expires_on ? `${L("صالحة لين", "Valid until")} ${giftDay(g.expires_on)}` : ""}</p>` : ""}
           </div>`; })}</div>`
-        : html`<p class="empty">${L("ما فيه مجموعات بعد — اضغط «مجموعة جديدة» وسوِّ أول هدية.", "No groups yet — press “New group” to make the first gift.")}</p>`}</div>` : ""}</div>`);
+        : html`<p class="empty">${L("ما فيه مجموعات بعد — اضغط «مجموعة جديدة» وسوِّ أول هدية.", "No groups yet — press “New group” to make the first gift.")}</p>`}</div></div>`);
+  $("#g-copyscan").onclick = () => copyText(new URL("scan", location.href).href, L("انتسخ رابط التحقق", "Verify link copied"));
 
-  /* ---- check + redeem ---- */
-  const res = $("#g-res");
-  const showGift = g => {
-    const info = g.status === "none" ? "" : html`<div class="gres__t"><b>${giftName(g)}</b> <span class="pill">${giftKind(g)}</span> <span class="num">${giftPretty(g.code)}</span></div>${giftNote(g) ? html`<p class="hint" style="margin:4px 0 0">${giftNote(g)}</p>` : ""}`;
-    const by = g.redeemed_at ? `${giftDay(g.redeemed_at)}${g.by ? " · " + g.by : ""}` : "";
-    const m = {
-      none: html`<div class="banner bad">${L("ما لقينا هالكود — تأكد من الحروف.", "Code not found — check the letters.")}</div>`,
-      ok: html`<div class="gres ok">${info}<p class="gres__s">${L("صالحة — ما انستخدمت", "Valid — not used yet")}${g.expires_on ? ` · ${L("لين", "until")} ${giftDay(g.expires_on)}` : ""}</p>
-            <button class="btn primary wide" id="g-redeem">${L("تأكيد الاستخدام", "Confirm redemption")}</button></div>`,
-      done: html`<div class="gres done">${info}<p class="gres__s">✓ ${L("تم تأكيد الاستخدام", "Redeemed")}</p></div>`,
-      used: html`<div class="gres used">${info}<p class="gres__s">${L("مستخدمة من قبل", "Already used")} — ${by}</p>${mgr ? html`<button class="btn sm" id="g-undo">${L("تراجع عن الاستخدام", "Undo redemption")}</button>` : ""}</div>`,
-      expired: html`<div class="gres bad">${info}<p class="gres__s">${L("منتهية", "Expired")}${g.expires_on ? ` — ${giftDay(g.expires_on)}` : ""}</p></div>`,
-      paused: html`<div class="gres bad">${info}<p class="gres__s">${L("المجموعة موقوفة حالياً", "This group is paused")}</p></div>`
-    };
-    put(res, m[g.status] || m.none);
-    if ($("#g-redeem")) $("#g-redeem").onclick = e => busy(e.target, async () => {
-      const r = await api.rpc("gift_redeem", { p_code: g.code });
-      showGift(r); if (r.status === "done") { toast(L("تم ✓ الهدية انحسبت مستخدمة", "Done ✓ marked as used"), "ok"); $("#g-code").value = ""; if (seeAll) refreshNums(); }
-    });
-    if ($("#g-undo")) $("#g-undo").onclick = async e => {
-      if (!(await confirmBox(L("تراجع عن الاستخدام", "Undo redemption"), L("الكود بيرجع صالح ويقدر العميل يستخدمه. متأكد؟", "The code becomes valid again and can be used. Are you sure?"), { danger: false, yes: L("تراجع", "Undo") }))) return;
-      await busy(e.target, async () => { await api.rpc("gift_unredeem", { p_code: g.code }); showGift(await api.rpc("gift_view", { p_code: g.code, p_count: false })); if (seeAll) refreshNums(); });
-    };
-  };
-  const refreshNums = async () => { try { const now = await api.rpc("gift_summary"); now.forEach(n => { const o = groups.find(x => x.id === n.id); if (o) Object.assign(o, n); }); } catch (e) {} };
-  const check = async () => {
-    const k = giftClean($("#g-code").value);
-    if (k.length !== 8) { put(res, html`<div class="banner warn">${L("الكود 8 حروف وأرقام.", "The code is 8 letters and digits.")}</div>`); return; }
-    put(res, html`<p class="hint" style="margin:10px 0 0">${L("لحظة…", "One moment…")}</p>`);
-    try { showGift(await api.rpc("gift_view", { p_code: k, p_count: false })); }
-    catch (e) { put(res, html`<div class="banner bad">${errText(e)}</div>`); }
-  };
-  $("#g-check").onsubmit = e => { e.preventDefault(); check(); };
-  if (pre) { history.replaceState(null, "", location.pathname + "#/gifts"); check(); }
-
-  /* ---- groups ---- */
   const form = g => html`<div class="grid" data-notr>
       <div class="grid g2">
         <div class="f"><label>${L("النوع", "Type")}</label><select name="kind"><option value="discount" ${g.kind === "discount" ? "selected" : ""}>${L("خصم بنسبة %", "Percent discount")}</option><option value="gift" ${g.kind !== "discount" ? "selected" : ""}>${L("هدية (مشروب، سويت، …)", "Gift (drink, sweet, …)")}</option></select></div>
@@ -885,33 +1025,76 @@ VIEWS.gifts = async el => {
         <div class="f"><label>${L("تفاصيل أو شروط (عربي) — اختياري", "Details or terms (Arabic) — optional")}</label><textarea name="note_ar" dir="rtl" rows="2" maxlength="240">${g.note_ar || ""}</textarea></div>
         <div class="f"><label>${L("تفاصيل أو شروط (إنجليزي) — اختياري", "Details or terms (English) — optional")}</label><textarea name="note_en" dir="ltr" rows="2" maxlength="240">${g.note_en || ""}</textarea></div>
       </div>
-      <div class="grid g2">
+      <div class="grid g3">
+        <div class="f"><label>${L("كم مرة ينستخدم كل كود؟", "How many times can each code be used?")}</label><input type="number" name="max_uses" class="num" min="1" max="100" inputmode="numeric" value="${g.max_uses || 1}">
+          <small>${L("1 = مرة وحدة. مثلاً 5 لبطاقة «5 قهاوي».", "1 = once. For example 5 for a “5 coffees” card.")}</small></div>
         <div class="f"><label>${L("آخر يوم صالحة فيه — اختياري", "Last valid day — optional")}</label><input type="date" name="expires_on" value="${g.expires_on || ""}"></div>
         ${g.id ? "" : html`<div class="f"><label>${L("كم كود (ستيكر) تبي؟", "How many codes (stickers)?")}</label><input type="number" name="count" class="num" min="1" max="500" inputmode="numeric" value="10"></div>`}
-      </div></div>`;
-  const wireForm = d => {
-    const f = $("form", d), sync = () => { $("[data-pct]", f).hidden = f.kind.value !== "discount"; };
+      </div>
+      <div class="f"><label>${L("صورة أعلى صفحة الهدية (هيدر) — اختياري", "Header photo on the gift page — optional")}</label>
+        <div class="gimg">
+          <div class="gimg__pv" data-pv></div>
+          <div class="gimg__side">
+            <div class="row"><label class="btn sm">${ico("upl")} <span data-upl>${g.image ? L("تغيير الصورة", "Change photo") : L("رفع صورة", "Upload photo")}</span><input type="file" name="imgfile" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden></label>
+              <button type="button" class="btn sm" data-imgrm ${g.image ? "" : "hidden"}>${L("إزالة (الشكل الافتراضي)", "Remove (default look)")}</button></div>
+            <div class="f"><label>${L("الجزء الظاهر من الصورة", "Part of the photo to show")}</label><select name="image_pos">
+              ${[["top", "فوق", "Top"], ["center", "الوسط", "Middle"], ["bottom", "تحت", "Bottom"]].map(o => html`<option value="${o[0]}" ${(g.image_pos || "center") === o[0] ? "selected" : ""}>${L(o[1], o[2])}</option>`)}</select></div>
+            <p class="hint gspec">${L("المقاس المقترح: 1600 × 900 بكسل (أفقية 16:9) · JPG أو PNG أو WEBP · لين 10 ميجا (اللوحة تصغّرها تلقائياً). خل الشي المهم في نص الصورة لأن الأطراف تنقص على الشاشات الصغيرة. بدون صورة تطلع أيقونة الهدية (الشكل الافتراضي).",
+              "Suggested size: 1600 × 900 px (landscape 16:9) · JPG, PNG or WEBP · up to 10 MB (the panel shrinks it). Keep the important part in the middle — the edges are trimmed on small screens. Without a photo the gift icon shows (default look).")}</p>
+          </div></div></div>
+    </div>`;
+  const wireForm = (d, g) => {
+    const f = $("form", d), pv = $("[data-pv]", f), rm = $("[data-imgrm]", f);
+    const st = { file: null, url: g.image || "", local: "" };
+    f._img = st;
+    const paint = () => {
+      const src = st.local || st.url, pos = GIFT_POS[f.image_pos.value] || GIFT_POS.center;
+      put(pv, src ? html`<img src="${src}" alt="" style="object-position:${pos}">` : html`<span class="gimg__def">${ico("gift")}<small>${L("الشكل الافتراضي", "Default look")}</small></span>`);
+      rm.hidden = !src; $("[data-upl]", f).textContent = src ? L("تغيير الصورة", "Change photo") : L("رفع صورة", "Upload photo");
+    };
+    const sync = () => { $("[data-pct]", f).hidden = f.kind.value !== "discount"; };
     f.kind.onchange = sync; sync();
+    f.image_pos.onchange = paint;
+    f.imgfile.onchange = () => {
+      const file = f.imgfile.files[0]; if (!file) return;
+      if (!/^image\//.test(file.type)) { toast(L("اختر صورة (JPG أو PNG أو WEBP)", "Choose a photo (JPG, PNG or WEBP)"), "bad"); f.imgfile.value = ""; return; }
+      if (file.size > 10 * 1048576) { toast(L("الصورة أكبر من 10 ميجا", "The photo is larger than 10 MB"), "bad"); f.imgfile.value = ""; return; }
+      if (st.local) URL.revokeObjectURL(st.local);
+      st.file = file; st.local = URL.createObjectURL(file); paint();
+    };
+    rm.onclick = () => { if (st.local) URL.revokeObjectURL(st.local); st.file = null; st.local = ""; st.url = ""; f.imgfile.value = ""; paint(); };
+    paint();
   };
   const readForm = f => {
-    const kind = f.kind.value, pct = Math.round(Number(f.percent.value));
+    const kind = f.kind.value, pct = Math.round(Number(f.percent.value)), uses = Math.round(Number(f.max_uses.value));
     if (kind === "discount" && !(pct >= 1 && pct <= 100)) { toast(L("اكتب نسبة الخصم من 1 إلى 100", "Enter a discount from 1 to 100"), "bad"); return null; }
+    if (!(uses >= 1 && uses <= 100)) { toast(L("عدد مرات الاستخدام من 1 إلى 100", "Uses per code must be 1 to 100"), "bad"); return null; }
     let ar = f.title_ar.value.trim(), en = f.title_en.value.trim();
     if (!ar && !en) { if (kind === "discount") { ar = `خصم ${pct}%`; en = `${pct}% off`; } else { toast(L("اكتب اسم الهدية", "Enter the gift name"), "bad"); return null; } }
-    return { kind, percent: kind === "discount" ? pct : null, title_ar: ar, title_en: en, note_ar: f.note_ar.value.trim(), note_en: f.note_en.value.trim(), expires_on: f.expires_on.value || null };
+    return { kind, percent: kind === "discount" ? pct : null, title_ar: ar, title_en: en, note_ar: f.note_ar.value.trim(), note_en: f.note_en.value.trim(),
+      expires_on: f.expires_on.value || null, max_uses: uses, image_pos: f.image_pos.value };
   };
-  if ($("#g-new")) $("#g-new").onclick = () => wireForm(modal(L("مجموعة جديدة", "New group"), form({ kind: "discount" }), { wide: true, submit: L("إنشاء الأكواد", "Create codes"), cancel: L("إلغاء", "Cancel"), onSubmit: async f => {
+  const saveImage = async (f, row) => {      // uploads the new header photo (if one was chosen) into the Library → "gifts" folder
+    const st = f._img;
+    if (st.file) { const m = await uploadMedia(st.file, "brand", "gifts"); row.image = m.url; }
+    else row.image = st.url || "";
+    return row;
+  };
+  if ($("#g-new")) $("#g-new").onclick = () => { const d = modal(L("مجموعة جديدة", "New group"), form({ kind: "discount", max_uses: 1 }), { wide: true, submit: L("إنشاء الأكواد", "Create codes"), cancel: L("إلغاء", "Cancel"), onSubmit: async f => {
     const row = readForm(f); if (!row) return false;
     const n = Math.round(Number(f.count.value));
     if (!(n >= 1 && n <= 500)) { toast(L("العدد من 1 إلى 500", "Count must be 1 to 500"), "bad"); return false; }
+    await saveImage(f, row);
     const b = await api.insert("gift_batches", row);
     const made = await api.rpc("gift_codes_add", { p_batch: b.id, p_count: n });
     toast(L(`جهزت ${made} كود ✓`, `${made} codes ready ✓`), "ok"); await again(); setTimeout(() => openCodes({ ...b, total: made }).catch(e => toast(errText(e), "bad")), 80); return true;
-  } }));
+  } }); wireForm(d, {}); };
 
   async function openCodes(g) {
     const rows = await api.select("gift_codes", `select=*&batch_id=eq.${enc(g.id)}&order=n.asc&limit=1000`);
-    const st = c => c.redeemed_at ? html`<span class="pill ink">${L("مستخدم", "Used")}</span> <span class="hint">${giftDay(c.redeemed_at)}${c.redeemed_by_name ? " · " + c.redeemed_by_name : ""}</span>`
+    const max = g.max_uses || 1;
+    const st = c => c.uses >= max ? html`<span class="pill ink">${L("مستخدم", "Used")}${max > 1 ? ` ${c.uses}/${max}` : ""}</span> <span class="hint">${giftDay(c.redeemed_at)}${c.redeemed_by_name ? " · " + c.redeemed_by_name : ""}</span>`
+      : c.uses > 0 ? html`<span class="pill ok">${L("استُخدم", "Used")} ${c.uses}/${max}</span> <span class="hint">${giftDay(c.redeemed_at)}${c.redeemed_by_name ? " · " + c.redeemed_by_name : ""}</span>`
       : c.seen_count ? html`<span class="pill warn">${L("انفتح", "Opened")}</span> <span class="hint num">×${c.seen_count}</span>` : html`<span class="pill">${L("جديد", "New")}</span>`;
     const d = modal(`${giftName(g)} — ${rows.length} ${L("كود", "codes")}`, html`<div data-notr>
         <p class="hint" style="margin:0 0 10px">${L("كل رابط ينكتب على ستيكر واحد (بتطبيق مثل NFC Tools: Write ← Add a record ← URL). الرقم # يساعدك تعرف أي ستيكر كتبته.", "Write each link to one sticker (with an app such as NFC Tools: Write → Add a record → URL). The # helps you keep track of which sticker you wrote.")}</p>
@@ -919,8 +1102,8 @@ VIEWS.gifts = async el => {
         ${rows.length ? html`<div class="tbl-wrap gcodes"><table><thead><tr><th>#</th><th>${L("الكود", "Code")}</th><th>${L("الحالة", "Status")}</th><th></th></tr></thead><tbody>
           ${rows.map(c => html`<tr data-c="${c.code}"><td class="num">${c.n}</td><td class="num">${giftPretty(c.code)}</td><td>${st(c)}</td>
             <td><div class="row end"><button type="button" class="btn sm" data-ca="copy">${L("نسخ الرابط", "Copy link")}</button>
-              ${mgr && c.redeemed_at ? html`<button type="button" class="btn sm" data-ca="undo">${L("تراجع", "Undo")}</button>` : ""}
-              ${mgr && !c.redeemed_at ? html`<button type="button" class="btn sm danger" data-ca="del" aria-label="${L("حذف الكود", "Delete code")}">${ico("trash")}</button>` : ""}</div></td></tr>`)}
+              ${mgr && c.uses > 0 ? html`<button type="button" class="btn sm" data-ca="undo">${L("تراجع", "Undo")}</button>` : ""}
+              ${mgr && !c.uses ? html`<button type="button" class="btn sm danger" data-ca="del" aria-label="${L("حذف الكود", "Delete code")}">${ico("trash")}</button>` : ""}</div></td></tr>`)}
         </tbody></table></div>` : html`<p class="empty">${L("ما فيه أكواد في هالمجموعة.", "No codes in this group.")}</p>`}</div>`,
       { wide: true, submit: "", cancel: L("إغلاق", "Close") });
     d.querySelector(".mb").onclick = async e => {
@@ -930,16 +1113,16 @@ VIEWS.gifts = async el => {
       if (a === "all") return copyText(rows.map(c => giftLink(c.code)).join("\n"), L(`انتسخ ${rows.length} رابط`, `${rows.length} links copied`));
       if (a === "csv") {
         const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-        const csv = "﻿" + [["#", "code", "link", "status", "used_on", "used_by"]].concat(rows.map(c => [c.n, c.code, giftLink(c.code), c.redeemed_at ? "used" : c.seen_count ? "opened" : "new", c.redeemed_at ? String(c.redeemed_at).slice(0, 10) : "", c.redeemed_by_name || ""])).map(r => r.map(q).join(",")).join("\r\n");
+        const csv = "﻿" + [["#", "code", "link", "status", "uses", "max_uses", "last_used_on", "last_used_by"]].concat(rows.map(c => [c.n, c.code, giftLink(c.code), c.uses >= max ? "used" : c.uses ? "partly used" : c.seen_count ? "opened" : "new", c.uses, max, c.redeemed_at ? String(c.redeemed_at).slice(0, 10) : "", c.redeemed_by_name || ""])).map(r => r.map(q).join(",")).join("\r\n");
         const u = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })), x = document.createElement("a");
         x.href = u; x.download = `pressio-gifts-${(g.title_en || g.title_ar || "codes").replace(/[^\w؀-ۿ]+/g, "-").slice(0, 30)}.csv`; document.body.appendChild(x); x.click(); x.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); return;
       }
       if (a === "undo") {
-        if (!(await confirmBox(L("تراجع عن الاستخدام", "Undo redemption"), L("الكود بيرجع صالح. متأكد؟", "The code becomes valid again. Are you sure?"), { danger: false, yes: L("تراجع", "Undo") }))) return;
+        if (!(await confirmBox(L("تراجع عن آخر استخدام", "Undo last use"), L("بنرجّع مرة وحدة للكود. متأكد؟", "One use goes back to the code. Are you sure?"), { danger: false, yes: L("تراجع", "Undo"), cancel: L("إلغاء", "Cancel") }))) return;
         await api.rpc("gift_unredeem", { p_code: code }); await again(); return openCodes(g);
       }
       if (a === "del") {
-        if (!(await confirmBox(L("حذف الكود", "Delete code"), L(`الكود ${giftPretty(code)} بينحذف والستيكر اللي عليه ما راح يشتغل. متأكد؟`, `Code ${giftPretty(code)} will be deleted and its sticker will stop working. Are you sure?`), { yes: L("حذف", "Delete") }))) return;
+        if (!(await confirmBox(L("حذف الكود", "Delete code"), L(`الكود ${giftPretty(code)} بينحذف والستيكر اللي عليه ما راح يشتغل. متأكد؟`, `Code ${giftPretty(code)} will be deleted and its sticker will stop working. Are you sure?`), { yes: L("حذف", "Delete"), cancel: L("إلغاء", "Cancel") }))) return;
         await api.remove("gift_codes", `code=eq.${enc(code)}`); await again(); return openCodes(g);
       }
     };
@@ -948,6 +1131,7 @@ VIEWS.gifts = async el => {
     const b = e.target.closest("[data-ga]"); if (!b) return;
     const g = groups.find(x => x.id === card.dataset.g), a = b.dataset.ga;
     try {
+      if (a === "preview") { if (!g.sample) return toast(L("المجموعة ما فيها أكواد", "This group has no codes"), "bad"); window.open(giftLink(g.sample) + "&preview=1", "_blank", "noopener"); return; }
       if (a === "codes") return await openCodes(g);
       if (a === "add") return modal(L("أكواد إضافية", "More codes"), html`<div class="f" data-notr><label>${L(`كم كود تضيف على «${giftName(g)}»؟`, `How many codes to add to “${giftName(g)}”?`)}</label><input type="number" name="count" class="num" min="1" max="500" inputmode="numeric" value="10"></div>`,
         { submit: L("إضافة", "Add"), cancel: L("إلغاء", "Cancel"), onSubmit: async f => {
@@ -956,13 +1140,14 @@ VIEWS.gifts = async el => {
           const made = await api.rpc("gift_codes_add", { p_batch: g.id, p_count: n });
           toast(L(`انضاف ${made} كود ✓`, `${made} codes added ✓`), "ok"); await again(); return true;
         } });
-      if (a === "edit") return wireForm(modal(L("تعديل المجموعة", "Edit group"), form(g), { wide: true, submit: L("حفظ", "Save"), cancel: L("إلغاء", "Cancel"), onSubmit: async f => {
-        const row = readForm(f); if (!row) return false;
-        await api.update("gift_batches", `id=eq.${enc(g.id)}`, row); toast(L("انحفظ", "Saved"), "ok"); await again(); return true;
-      } }));
+      if (a === "edit") { const d = modal(L("تعديل المجموعة", "Edit group"), form(g), { wide: true, submit: L("حفظ", "Save"), cancel: L("إلغاء", "Cancel"), onSubmit: async f => {
+          const row = readForm(f); if (!row) return false;
+          await saveImage(f, row);
+          await api.update("gift_batches", `id=eq.${enc(g.id)}`, row); toast(L("انحفظ", "Saved"), "ok"); await again(); return true;
+        } }); wireForm(d, g); return; }
       if (a === "toggle") { await busy(b, async () => { await api.update("gift_batches", `id=eq.${enc(g.id)}`, { active: !g.active }); toast(g.active ? L("المجموعة موقوفة — أكوادها ما تشتغل لين تشغّلها", "Group paused — its codes won't work until resumed") : L("المجموعة شغّالة", "Group is active"), "ok"); await again(); }); return; }
       if (a === "del") {
-        if (!(await confirmBox(L("حذف المجموعة", "Delete group"), L(`«${giftName(g)}» وكل أكوادها (${g.total}) بتنحذف، والستيكرات المكتوبة عليها ما راح تشتغل. إذا تبي توقفها مؤقتاً استخدم «إيقاف».`, `“${giftName(g)}” and all its codes (${g.total}) will be deleted, and stickers written with them will stop working. To stop it for a while, use “Pause”.`), { typed: g.total ? L("حذف", "delete") : null, yes: L("حذف", "Delete") }))) return;
+        if (!(await confirmBox(L("حذف المجموعة", "Delete group"), L(`«${giftName(g)}» وكل أكوادها (${g.total}) بتنحذف، والستيكرات المكتوبة عليها ما راح تشتغل. إذا تبي توقفها مؤقتاً استخدم «إيقاف».`, `“${giftName(g)}” and all its codes (${g.total}) will be deleted, and stickers written with them will stop working. To stop it for a while, use “Pause”.`), { typed: g.total ? L("حذف", "delete") : null, yes: L("حذف", "Delete"), cancel: L("إلغاء", "Cancel") }))) return;
         await api.remove("gift_batches", `id=eq.${enc(g.id)}`); toast(L("انحذفت المجموعة", "Group deleted"), "ok"); await again();
       }
     } catch (err) { toast(errText(err), "bad"); }

@@ -340,3 +340,59 @@ h3.lbl{margin:10px 0 2px;font-size:14px}
 .gcodes td,.gcodes th{white-space:nowrap}
 /* phone: the dark top bar keeps its own height on short pages (it used to stretch) */
 @media (max-width:900px){.app{grid-template-rows:auto 1fr}}
+
+/* gifts v2: verify screen for the counter */
+.vpage{max-width:560px;margin-inline:auto}
+.vlang{color:var(--ink)!important;border-color:var(--line)!important;background:var(--paper);padding:6px 14px!important;font-size:13px!important}
+.vbox{border-radius:22px;border:3px solid var(--line);background:var(--paper);padding:22px 18px 18px;text-align:center;box-shadow:var(--shadow);scroll-margin-top:70px;transition:border-color .2s,background .2s}
+.vbox.is-idle{border-style:dashed;border-width:2px;color:var(--ink-2)}
+.vbox.is-ok{border-color:#2F8F4E;background:#F1FAF3}
+.vbox.is-done{border-color:#2F8F4E;background:#2F8F4E;color:#fff}
+.vbox.is-bad{border-color:#C0392B;background:#FDF1EF}
+.vic{width:74px;height:74px;margin:0 auto 8px;border-radius:50%;display:grid;place-items:center;background:var(--sand);color:var(--ink-2)}
+.vic svg{width:44px;height:44px}
+.is-ok .vic{background:#2F8F4E;color:#fff}
+.is-done .vic{background:#fff;color:#2F8F4E}
+.is-bad .vic{background:#C0392B;color:#fff}
+.vstate{font-size:26px;font-weight:700;line-height:1.3}
+.is-ok .vstate{color:#23703C}.is-bad .vstate{color:#A62F23}
+.vgift{margin-top:8px;font-size:16px;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
+.vgift b{font-size:17px}
+.is-done .vgift .pill{background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.35)}
+.vcode{font-size:13px;color:var(--muted);letter-spacing:.08em}
+.is-done .vcode,.is-done .vnote,.is-done .vsub{color:rgba(255,255,255,.9)}
+.vnote{margin:4px 0 0;color:var(--ink-2);font-size:14px}
+.vsub{margin:8px 0 0;font-size:15px;color:var(--ink-2)}
+.vgo{display:flex;width:100%;justify-content:center;margin-top:16px;min-height:58px;font-size:18px;font-weight:600;background:#2F8F4E;border-color:#2F8F4E;color:#fff;border-radius:16px}
+.vgo:hover{background:#257540}
+.vnext{margin-top:12px}
+.is-done .vnext{background:#fff;color:#23703C;border-color:#fff;min-height:50px;font-weight:600}
+.vhist{list-style:none;margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--line);font-size:13px;color:var(--ink-2)}
+.vhist li{padding:2px 0}
+.vspin{width:40px;height:40px;margin:14px auto 4px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--ink);animation:vsp 1s linear infinite}
+@keyframes vsp{to{transform:rotate(360deg)}}
+.vtools{margin-top:14px}
+.vbtns{display:flex;gap:10px;flex-wrap:wrap}
+.vbig{flex:1;min-height:56px;font-size:16px;justify-content:center;border-radius:16px}
+#v-nfc.on{border-color:#2F8F4E;color:#23703C}
+.vform{margin-top:12px}
+.vform .gcode{max-width:none}
+.vtip{margin:12px 0 0!important}
+.vcam{position:relative;border-radius:18px;overflow:hidden;background:#111;aspect-ratio:1;max-height:62vh;margin:0 auto 12px;width:100%}
+.vcam video{width:100%;height:100%;object-fit:cover;display:block}
+.vcam__frame{position:absolute;inset:16%;border:3px solid rgba(255,255,255,.92);border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.vcam__msg{position:absolute;inset-inline:0;bottom:12px;text-align:center;color:#fff;font-size:14px;text-shadow:0 1px 3px rgba(0,0,0,.6);padding:0 54px}
+.vcam__x{position:absolute;top:10px;inset-inline-end:10px;background:rgba(255,255,255,.92)}
+/* gifts v2: groups page */
+.gstaff h2{margin-bottom:2px}
+.gscan{font-size:15px;padding:4px 12px;border-radius:999px;background:var(--sand)}
+.gthumb{width:44px;height:30px;border-radius:7px;object-fit:cover;flex:none}
+.gthumb--ic{display:grid;place-items:center;background:var(--ink);color:#F8F3EC}
+.gimg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:14px;align-items:start}
+@media (max-width:560px){.gimg{grid-template-columns:1fr}}
+.gimg__pv{aspect-ratio:2/1;border-radius:14px;overflow:hidden;background:linear-gradient(160deg,#F2ECE4,#E6DACB);border:1px solid var(--line-soft)}
+.gimg__pv img{width:100%;height:100%;object-fit:cover;display:block}
+.gimg__def{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--muted)}
+.gimg__def svg{width:34px;height:34px;padding:8px;box-sizing:content-box;border-radius:50%;background:var(--ink);color:#F8F3EC}
+.gimg__side{display:grid;gap:10px}
+.gspec{margin:0!important;font-size:12.5px}
